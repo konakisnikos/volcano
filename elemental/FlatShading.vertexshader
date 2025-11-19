@@ -1,0 +1,41 @@
+#version 330 core
+
+// construct input layout for the corresponding attributes
+// (vertexPosition_modelspace, vertexNormal_modelspace, vertexUV)
+layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 1) in vec3 vertexNormal_modelspace;
+layout(location = 2) in vec2 vertexUV;
+
+// Output variables that will be interpolated for each fragment
+flat out vec4 vertex_color;
+
+// uniforms
+uniform mat4 P;
+uniform mat4 V;
+uniform mat4 M;
+uniform vec3 light_position_worldspace;
+
+// samplers
+uniform sampler2D diffuseColorSampler;
+uniform sampler2D specularColorSampler;
+
+void main()
+{
+    // Output position of the vertex, in clip space : MVP * position
+    gl_Position =  P * V * M * vec4(vertexPosition_modelspace, 1);
+
+    // These would normally be output to the fragment shader
+    //vec4 vertex_position_cameraspace = ...
+    //vec4 vertex_normal_cameraspace = ...
+    //vec4 light_position_cameraspace = ...
+    //vec2 vertex_UV = vertexUV;
+
+    // default color
+    vertex_color = vec4(1, 1, 1, 1);
+
+    // Homework 3: implement flat shading.
+
+    // copy code from "GouraudShading.vertexshader"
+    
+    // ...
+}

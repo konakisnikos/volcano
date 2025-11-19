@@ -1,0 +1,40 @@
+#version 330 core
+
+// construct input layout for the corresponding attributes
+// (vertexPosition_modelspace, vertexNormal_modelspace, vertexUV)
+layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 1) in vec3 vertexNormal_modelspace;
+layout(location = 2) in vec2 vertexUV;
+
+// Output variables that will be interpolated for each fragment
+out vec4 vertex_position_cameraspace;
+out vec4 vertex_normal_cameraspace;
+out vec4 light_position_cameraspace;
+out vec2 vertex_UV;
+
+// uniforms
+uniform mat4 P;
+uniform mat4 V;
+uniform mat4 M;
+uniform vec3 light_position_worldspace;
+
+void main()
+{
+    // Output position of the vertex, in clip space : MVP * position
+    gl_Position =  P * V * M * vec4(vertexPosition_modelspace, 1);
+
+    // Task 3.1: transform the position of the vertex from model space to camera space
+    vertex_position_cameraspace = V * M * vec4(vertexPosition_modelspace, 1);
+
+    // Task 3.2: transform the normal of the vertex from model space to camera space
+    vertex_normal_cameraspace = V * M * vec4(vertexNormal_modelspace, 0); //0 γιατι ειναι διάνυσμα κατεύθυνσης
+    //vertex_normal_cameraspace = transpose(inverse(V * M)) * vec4(vertexNormal_modelspace, 0); αν εχω ανισοτροπική κλιμάκωση
+
+    // Task 3.3: transform the position of the light from world space to camera space
+    light_position_cameraspace = V * vec4(light_position_worldspace, 1);
+
+    // Task 6.4: propagate the UV coordinates
+    vertex_UV = vertexUV;
+
+
+}

@@ -1,0 +1,133 @@
+#version 330 core
+
+// interpolated values from the vertex shaders
+in vec4 vertex_position_cameraspace;
+in vec4 vertex_normal_cameraspace;
+in vec4 light_position_cameraspace;
+in vec2 vertex_UV;
+
+// output data
+out vec4 fragment_color;
+
+// Task 6.3: define uniform variables for the texture coordinates
+// (diffuseColorSampler, specularColorSampler)
+uniform sampler2D diffuseColorSampler;
+uniform sampler2D specularColorSampler;
+
+
+void main()
+{
+    // default color
+    fragment_color = vec4(1, 1, 1, 1);
+
+    // Task 2.1: model light; specular (Ls), diffuse (Ld) and ambient (La) color
+    vec4 Ls = vec4(1, 1, 1, 1); // white specular light
+    vec4 Ld = vec4(1, 1, 1, 1); // white diffuse light
+    vec4 La = vec4(1, 1, 1, 1); // white ambient light
+
+    // Task 2.2: model material properties; specular (Ks), diffuse (Kd), 
+    // ambient (Ka) color and specular exponent (Ns) (gold material)
+    /* Gold
+        specular  0.628281, 0.555802, 0.366065
+        diffuse   0.75164, 0.60648, 0.22648
+        ambient   0.24725, 0.1995, 0.0745
+        shininess 51.2
+    */
+    vec4 Ks = vec4(0.628281, 0.555802, 0.366065, 1); // specular reflectivity
+    vec4 Kd = vec4(0.75164, 0.60648, 0.22648, 1);   // diffuse reflectivity
+    vec4 Ka = vec4(0.24725, 0.1995, 0.0745, 1);     // ambient reflectivity
+    float Ns = 51.2; // specular exponent
+
+    // Homework 4: make model materials as uniform variables and display multiple 
+    // instances of the model with different materials
+    // http://www.barradeau.com/nicoptere/dump/materials.html
+
+    // Task 6.5: assign material properties from the texture maps
+
+    Ks = texture(specularColorSampler, vertex_UV);
+    Kd = texture(diffuseColorSampler, vertex_UV);
+    Ka = vec4(0.1 * Kd.xyz, Kd.w);
+    Ns = 10;
+
+
+    // Task 2.3: model ambient intensity (Ia)
+    vec4 Ia = La * Ka;
+    fragment_color = Ia; // initialize the fragment color with the ambient component
+
+    // Task 3: model diffuse intensity
+    // Task 3.4: calculate the normalized vertex normal (N) in camera space
+    vec4 N = normalize(vertex_normal_cameraspace);
+
+    // Task 3.5: calculate the normalized light direction (L) in camera space
+    vec4 L = normalize(light_position_cameraspace - vertex_position_cameraspace);
+
+    // Task 3.6: compute cos(theta)
+    // cosine of the angle between the normal and the light direction, 
+    // clamped above 0; use clamp(float, min, max)
+    //  - light is at the vertical of the triangle -> 1
+    //  - light is perpendicular to the triangle -> 0
+    //  - light is behind the triangle -> 0
+    float cosTheta = clamp(dot(N, L), 0, 1);
+
+    // Task 3.7: calculate the diffuse intensity and the new fragment color
+    vec4 Id = Ld * Kd * cosTheta;
+    fragment_color = Ia + Id;
+    // fragment_color = Id; // for testing the diffuse component only
+    // Task 4: model specular intensity
+    // Task 4.1: compute reflection direction (R) in camera space
+    vec4 R = reflect(-L, N);
+
+    // Task 4.2: compute surface to viewer direction (E) in camera space
+    vec4 E = normalize(vec4(0,0,0,1) - vertex_position_cameraspace);
+
+    // Task 4.3: compute cos(alpha)
+    // cosine of the angle between the Eye vector and the Reflect vector,
+    // clamped to 0; use clamp(float, min, max)
+    //  - Looking into the reflection -> 1
+    //  - Looking elsewhere -> < 1
+    float cosAlpha = clamp(dot(E, R), 0, 1);
+
+    // Task 4.4: calculate specular factor cos(a)^Ns
+    float specular_factor = pow(cosAlpha, Ns);
+
+    // Task 4.5: calculate the specular intensity and the new fragment color
+    vec4 Is = Ls * Ks * specular_factor;
+    fragment_color = Ia + Id + Is;
+    // fragment_color = Is; // for testing the specular component only
+  
+
+    // Task 5: model the light distance effect (add a light_power parameter).
+    // Change camera position to verify the correct behavior.
+    float light_power = 60.0;
+    float k = 1/light_power;
+    vec4 distance = light_position_cameraspace - vertex_position_cameraspace; //σωστο και στο worldspace και στο cameraspace γιατι δεν κανω scaling κατα τη μετατροπη
+    float dist = length(distance);
+    float attenuation = 1.0 / (1.0 + k * dist * dist);
+    Id = Id * attenuation;
+    Is = Is * attenuation;
+    fragment_color = Ia + Id + Is;
+    
+    // Task 7: create the spotlight effect
+    vec4 spotlight_dir_cameraspace = vec4(0, 0, -1, 0); // assuming spotlight points down the negative Z axis in camera space
+    float spotlight_arc = dot(spotlight_dir_cameraspace, -L);
+
+    //cone: 10 degrees
+    float spotlight_cutoff = cos(radians(10.0)); // spotlight cutoff angle
+    float spotlight_factor = 1.0;
+    if (spotlight_arc < spotlight_cutoff) {
+        spotlight_factor = 0.0;
+    }
+    else {
+        spotlight_factor = (spotlight_arc - spotlight_cutoff) / (1.0 - spotlight_cutoff);
+    }
+    
+
+    fragment_color = Ia + (Id + Is) * spotlight_factor;
+
+
+    // Homework 1: modify the code for the spotlight in order to create a “ring light”.
+
+    // Homework 5: make light properties as uniform variables and use the keyboard  
+    // keys to adjust them (light position, color and power).
+
+}
