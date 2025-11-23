@@ -89,6 +89,12 @@ float fractalPerlin(float x, float y, int octaves, float persistence, float lacu
 
     return value / maxAmplitude; // normalize to roughly [-1,1]
 }
+
+float gaussianPeak(float x, float z, float sigma, float amplitude) {
+    float sigmaSq = sigma * sigma;
+    float distSq = x * x + z * z;
+    return amplitude * std::exp(-distSq / (2.0f * sigmaSq));
+}
 } // namespace
 
 Volcano::Volcano(int gridSize, float maxTerrainWidth, float heightScale)
@@ -129,6 +135,10 @@ void Volcano::generateGeometry() {
     constexpr float NOISE_LACUNARITY = 2.0f;
     const glm::vec2 NOISE_OFFSET(113.7f, -57.3f);
 
+    const float noiseAmplitude = m_heightScale * 0.5f;
+    const float volcanoSigma = m_width * 0.18f;
+    const float volcanoAmplitude = m_heightScale * 1.6f;
+
     for (int i = 0; i < m_gridSize; ++i) {
         for (int j = 0; j < m_gridSize; ++j) {
             float x = static_cast<float>(j) * step - halfWidth;
@@ -142,7 +152,9 @@ void Volcano::generateGeometry() {
                 NOISE_LACUNARITY
             );
 
-            float y = sample * m_heightScale;
+            float noiseHeight = sample * noiseAmplitude;
+            float volcanoHeight = gaussianPeak(x, z, volcanoSigma, volcanoAmplitude);
+            float y = noiseHeight + volcanoHeight;
 
             gridPositions.emplace_back(x, y, z);
             gridTexCoords.emplace_back(
