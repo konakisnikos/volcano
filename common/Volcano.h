@@ -12,7 +12,7 @@ class Volcano {
 public:
     Volcano(int gridSize, float maxTerrainWidth, float heightScale);
     ~Volcano();
-    
+
     void Draw();
 
 private:
@@ -29,7 +29,6 @@ private:
 
     void generateGeometry(); //creates vertices and indices
     void calculateNormals(); //for lighting
-    float gaussian(float x, float z); //for volcano shape
     void applyRiverPath(); //modifies terrain for river
 };
 
