@@ -154,6 +154,9 @@ void Volcano::generateGeometry() {
     const float riverRadialBlend = volcanoSigma * 0.35f;  // tighter falloff near start, softer far away
     const float riverDiagonalSlope = 0.55f;               // stronger diagonal drift toward +X as Z increases
     const float riverDiagonalOffset = -halfWidth * 0.05f; // shift the origin so it starts near cone base
+    const float riverStartTargetX = 0.0f;                 // desired X coordinate near the river source
+    const float riverStartRadius = volcanoSigma * 0.55f;  // within this radius enforce near-center origin
+    const float riverStartBlendRadius = riverStartRadius * 0.6f;
 
     for (int i = 0; i < m_gridSize; ++i) {
         for (int j = 0; j < m_gridSize; ++j) {
@@ -185,7 +188,9 @@ void Volcano::generateGeometry() {
             float sCurve = std::sin(normalizedZ * PI * 1.15f);
             float sNoise = std::sin(normalizedZ * PI * 3.6f + 1.37f);
             float diagonalDrift = riverDiagonalSlope * z + riverDiagonalOffset;
-            float riverCenterX = diagonalDrift + riverAmplitudeX * sCurve + riverNoiseX * sNoise;
+            float rawRiverCenterX = diagonalDrift + riverAmplitudeX * sCurve + riverNoiseX * sNoise;
+            float startBlend = glm::smoothstep(riverStartRadius, riverStartRadius + riverStartBlendRadius, distanceFromCenter);
+            float riverCenterX = glm::mix(riverStartTargetX, rawRiverCenterX, startBlend);
 
             float riverDistanceX = std::abs(x - riverCenterX);
             float lateralMask = 1.0f - glm::smoothstep(riverWidth,

@@ -62,16 +62,16 @@ void createContext()
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
     // volcano
-    // Create procedural volcano with grid size 64, terrain width 150.0, height scale 12.0
-    volcano = new Volcano(94, 250.0f, 12.0f);
+    // Create procedural volcano with grid size 194, terrain width 950.0, height scale 17.0
+    volcano = new Volcano(194, 950.0f, 17.0f);
 
     std::vector<std::string> cubemapFaces = {
-        "../skybox/right.png",
-        "../skybox/left.png",
-        "../skybox/top.png",
-        "../skybox/bottom.png",
-        "../skybox/front.png",
-        "../skybox/back.png"
+        "../skybox_clear/right.png",
+        "../skybox_clear/left.png",
+        "../skybox_clear/top.png",
+        "../skybox_clear/bottom.png",
+        "../skybox_clear/front.png",
+        "../skybox_clear/back.png"
     };
     skybox = new Skybox(cubemapFaces);
 }

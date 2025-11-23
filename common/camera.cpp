@@ -5,7 +5,7 @@
 using namespace glm;
 
 Camera::Camera(GLFWwindow* window) : window(window) {
-    position = vec3(0, 0, 250);
+    position = vec3(0,80, 350);
     horizontalAngle = 3.14f;
     verticalAngle = 0.0f;
     FoV = 45.0f;
@@ -111,7 +111,7 @@ void Camera::update() {
     }
 
     // Task 5.7: construct projection and view matrices
-    projectionMatrix = perspective(radians(FoV), 4.0f / 3.0f, 0.1f, 550.0f);
+    projectionMatrix = perspective(radians(FoV), 4.0f / 3.0f, 0.1f, 2000.0f);
     viewMatrix = lookAt(
         position,
         position + direction,
