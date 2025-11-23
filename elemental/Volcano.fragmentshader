@@ -1,14 +1,10 @@
 #version 330 core
 
-// Input from Vertex Shader
-in vec2 vUV;
-
-uniform sampler2D volcanoDiffuseSampler;
-
-
 // Output color
 out vec4 fragment_color;
 
+uniform vec4 uColor;
+
 void main() {
-    fragment_color = texture(volcanoDiffuseSampler, vUV);
+    fragment_color = uColor;
 }

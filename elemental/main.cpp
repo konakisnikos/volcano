@@ -19,7 +19,6 @@
 #include <common/util.h>
 #include <common/camera.h>
 #include <common/model.h>
-#include <common/texture.h>
 #include <common/Volcano.h>
 
 using namespace std;
@@ -39,9 +38,8 @@ void free();
 GLFWwindow* window;
 Camera* camera;
 GLuint shaderProgram;
-GLuint volcanoDiffuseSampler;
-GLuint volcanoDiffuseTexture;
 GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
+GLuint colorLocation;
 // Removed unused lightLocation for simplified shaders
 // GLuint lightLocation;
 Volcano* volcano;
@@ -51,18 +49,15 @@ void createContext()
     // Create and compile our GLSL program from the shaders
     shaderProgram = loadShaders("../elemental/Volcano.vertexshader", "../elemental/Volcano.fragmentshader");
 
-    GLuint volcanoDiffuseTexture = loadSOIL("volcano.bmp");
-
-    GLint volcanoDiffuseSampler = glGetUniformLocation(shaderProgram, "volcanoDiffuseSampler");
-
     // get pointers to the uniform variables
     projectionMatrixLocation = glGetUniformLocation(shaderProgram, "P");
     viewMatrixLocation = glGetUniformLocation(shaderProgram, "V");
     modelMatrixLocation = glGetUniformLocation(shaderProgram, "M");
+    colorLocation = glGetUniformLocation(shaderProgram, "uColor");
     // lightLocation no longer needed
     // lightLocation = glGetUniformLocation(shaderProgram, "light_position_worldspace");
 
-    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
     // volcano
     // Create procedural volcano with grid size 50, terrain width 20.0, height scale 6.5
@@ -72,10 +67,10 @@ void createContext()
 void free()
 {
     glDeleteProgram(shaderProgram);
-    
+
     // Clean up allocated objects
     if (volcano) delete volcano;
-    
+
     glfwTerminate();
 }
 
@@ -102,9 +97,7 @@ void mainLoop()
         glUniformMatrix4fv(modelMatrixLocation, 1, GL_FALSE, &modelMatrix[0][0]);
         // glUniform3f(lightLocation, lightPos.x, lightPos.y, lightPos.z); // light disabled
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, volcanoDiffuseTexture);
-        glUniform1i(volcanoDiffuseSampler, 0);
+    glUniform4f(colorLocation, 1.0f, 0.0f, 0.0f, 1.0f);
 
         // draw volcano
         volcano->Draw();
@@ -172,9 +165,6 @@ void initialize()
     // enable blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    // enable textures
-    glEnable(GL_TEXTURE_2D);
 
     // Log
     logGLParameters();
