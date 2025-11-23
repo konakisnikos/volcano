@@ -29,7 +29,7 @@ private:
 
     void generateGeometry(); //creates vertices and indices
     void calculateNormals(); //for lighting
-    void applyRiverPath(); //modifies terrain for river
+    //void applyRiverPath(); //modifies terrain for river
 };
 
 #endif // VOLCANO_H
