@@ -137,7 +137,7 @@ void Volcano::generateGeometry() {
     // --- Tunable height controls -----------------------------------------------------
     const float noiseAmplitude = m_heightScale * 0.15f;   // softer surrounding terrain
     const float volcanoSigma = m_width * 0.15f;           // wider, smoother cone similar to reference
-    const float volcanoAmplitude = m_heightScale * 2.8f;  // slightly lower peak height
+    const float volcanoAmplitude = m_heightScale * 3.4f;  // slightly lower peak height
 
     const float craterRadius = volcanoSigma * 0.3f;       // crater size scales with wider cone
     const float craterDepth  = volcanoAmplitude * 0.25f;  // shallower depression for smoother summit
@@ -146,9 +146,9 @@ void Volcano::generateGeometry() {
     // River controls: an S-shaped channel hugging the base of the volcano
     const float riverAmplitudeX = halfWidth * 0.28f;      // lateral swing of the S curve
     const float riverNoiseX = halfWidth * 0.08f;          // higher-frequency wobble for randomness
-    const float riverWidth = m_width * 0.025f;            // half-width of the carved channel
+    const float riverWidth = m_width * 0.015f;            // half-width of the carved channel
     const float riverBlend = riverWidth * 2.2f;           // softens the river banks
-    const float riverDepth = m_heightScale * 0.35f;       // excavation depth of the river bed
+    const float riverDepth = m_heightScale * 0.85f;       // excavation depth of the river bed
     const float riverInnerRadius = volcanoSigma * 0.95f;  // begin carving mid-slope near cone base
     const float riverOuterRadius = riverInnerRadius + m_width * 0.55f; // extend farther across terrain
     const float riverRadialBlend = volcanoSigma * 0.35f;  // tighter falloff near start, softer far away
