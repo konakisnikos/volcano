@@ -20,6 +20,7 @@
 #include <common/camera.h>
 #include <common/model.h>
 #include <common/texture.h>
+#include <common/Volcano.h>
 
 using namespace std;
 using namespace glm;
@@ -32,100 +33,55 @@ void free();
 
 #define W_WIDTH 1024
 #define W_HEIGHT 768
-#define TITLE "Lab 05"
+#define TITLE "ELEMENTAL"
 
 // Global variables
 GLFWwindow* window;
 Camera* camera;
 GLuint shaderProgram;
+GLuint volcanoDiffuseSampler;
+GLuint volcanoDiffuseTexture;
 GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
-GLuint lightLocation;
-GLuint diffuseColorSampler, specularColorSampler;
-GLuint diffuseTexture, specularTexture;
-std::vector<vec3> objVertices, objNormals;
-std::vector<vec2> objUVs;
-Drawable* triangle;
-Drawable* obj;
-
-//#define RENDER_TRIANGLE
+// Removed unused lightLocation for simplified shaders
+// GLuint lightLocation;
+Volcano* volcano;
 
 void createContext()
 {
     // Create and compile our GLSL program from the shaders
-    shaderProgram = loadShaders("PhongShading.vertexshader", "PhongShading.fragmentshader");
+    shaderProgram = loadShaders("../elemental/Volcano.vertexshader", "../elemental/Volcano.fragmentshader");
 
-    // Homework 2: implement Gouraud shading.
-    // shaderProgram = loadShaders("GouraudShading.vertexshader", "GouraudShading.fragmentshader");
+    GLuint volcanoDiffuseTexture = loadSOIL("volcano.bmp");
 
-    // Homework 3: implement flat shading.
-    // shaderProgram = loadShaders("FlatShading.vertexshader", "FlatShading.fragmentshader");
-    
-
-    // Task 6.2: load diffuse and specular texture maps
-    diffuseTexture = loadSOIL("suzanne_diffuse.bmp");
-    specularTexture = loadSOIL("suzanne_specular.bmp");
-
-
-    // Task 6.3: get a pointer to the texture samplers (diffuseColorSampler, specularColorSampler)
-    diffuseColorSampler = glGetUniformLocation(shaderProgram, "diffuseColorSampler");
-    specularColorSampler = glGetUniformLocation(shaderProgram, "specularColorSampler");
-
+    GLint volcanoDiffuseSampler = glGetUniformLocation(shaderProgram, "volcanoDiffuseSampler");
 
     // get pointers to the uniform variables
     projectionMatrixLocation = glGetUniformLocation(shaderProgram, "P");
     viewMatrixLocation = glGetUniformLocation(shaderProgram, "V");
     modelMatrixLocation = glGetUniformLocation(shaderProgram, "M");
-    lightLocation = glGetUniformLocation(shaderProgram, "light_position_worldspace");
+    // lightLocation no longer needed
+    // lightLocation = glGetUniformLocation(shaderProgram, "light_position_worldspace");
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    // triangle
-    // Task 1: visualize a triangle facing towards the +z direction.
-    // Task 1.1: define the triangle’s vertex positions
-    vector<vec3> triangleVertices = {
-        vec3(-1.5, -1.5, 0.0),
-        vec3(0.0, 1.5, 0.0),
-        vec3(1.5, -1.5, 0.0)
-    };
-
-    //triangleVertices.push_back(vec3(...)); // vertex 1
-    
-
-    // Task 1.2: define the triangle’s vertex normals
-    vector<vec3> triangleNormals = {
-        vec3(0.0, 0.0, 1.0),
-        vec3(0.0, 0.0, 1.0),
-        vec3(0.0, 0.0, 1.0)
-    };
-
-
-    // Task 1.3: construct the triangle as a Drawable
-    triangle = new Drawable(triangleVertices, VEC_VEC2_DEFAULT_VALUE, triangleNormals);
-
-
-    // obj
-    // Task 1.4: construct the object (Suzanne) as a Drawable
-    obj = new Drawable("suzanne.obj");
-
-
-    // Homework 7: Load the obj's vertices and UVs using loadOBJWithTiny.
-    // Ignore the normals returned by loadOBJWithTiny and try to compute them yourself.
-    // loadOBJWithTiny("suzanne.obj", objVertices, objUVs, objNormals);
-    // loadOBJWithTiny("earth.obj", objVertices, objUVs, objNormals);
-
+    // volcano
+    // Create procedural volcano with grid size 50, terrain width 20.0, height scale 6.5
+    volcano = new Volcano(50, 80.0f, 5.5f);
 }
 
 void free()
 {
-    glDeleteTextures(1, &diffuseTexture);
-    glDeleteTextures(1, &specularTexture);
     glDeleteProgram(shaderProgram);
+    
+    // Clean up allocated objects
+    if (volcano) delete volcano;
+    
     glfwTerminate();
 }
 
 void mainLoop()
 {
-    glm::vec3 lightPos = glm::vec3(0, 0, 4);
+    // glm::vec3 lightPos = glm::vec3(0, 0, 4); // no lighting for now
 
     do
     {
@@ -136,16 +92,6 @@ void mainLoop()
         // camera
         camera->update();
 
-        // Task 1.5: bind
-#ifdef RENDER_TRIANGLE
-        // bind triangle
-        triangle->bind();
-
-#else
-        // bind obj
-        obj->bind();
-
-#endif
         mat4 projectionMatrix = camera->projectionMatrix;
         mat4 viewMatrix = camera->viewMatrix;
         mat4 modelMatrix = mat4(1.0);
@@ -154,27 +100,14 @@ void mainLoop()
         glUniformMatrix4fv(projectionMatrixLocation, 1, GL_FALSE, &projectionMatrix[0][0]);
         glUniformMatrix4fv(viewMatrixLocation, 1, GL_FALSE, &viewMatrix[0][0]);
         glUniformMatrix4fv(modelMatrixLocation, 1, GL_FALSE, &modelMatrix[0][0]);
-        glUniform3f(lightLocation, lightPos.x, lightPos.y, lightPos.z); // light
+        // glUniform3f(lightLocation, lightPos.x, lightPos.y, lightPos.z); // light disabled
 
-        // Task 6.4: bind textures and transmit the diffuse and specular maps to the GPU
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, diffuseTexture);
-        glUniform1i(diffuseColorSampler, 0); // Texture unit 0
+        glBindTexture(GL_TEXTURE_2D, volcanoDiffuseTexture);
+        glUniform1i(volcanoDiffuseSampler, 0);
 
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, specularTexture);
-        glUniform1i(specularColorSampler, 1); // Texture unit 1
-
-        // Task 1.5: draw
-#ifdef RENDER_TRIANGLE
-        // draw triangle
-        triangle->draw();
-
-#else
-        // draw obj
-        obj->draw();
-
-#endif
+        // draw volcano
+        volcano->Draw();
 
         glfwSwapBuffers(window);
 
@@ -198,7 +131,7 @@ void initialize()
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     // Open a window and create its OpenGL context
-    window = glfwCreateWindow(W_WIDTH, W_HEIGHT, TITLE, NULL, NULL);
+    window = glfwCreateWindow(W_WIDTH, W_HEIGHT, TITLE, glfwGetPrimaryMonitor(), NULL);
     if (window == NULL)
     {
         glfwTerminate();
