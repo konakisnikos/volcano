@@ -66,12 +66,12 @@ void createContext()
     volcano = new Volcano(194, 950.0f, 17.0f);
 
     std::vector<std::string> cubemapFaces = {
-        "../skybox_clear/right.png",
-        "../skybox_clear/left.png",
-        "../skybox_clear/top.png",
-        "../skybox_clear/bottom.png",
-        "../skybox_clear/front.png",
-        "../skybox_clear/back.png"
+        "../skybox/right.png",
+        "../skybox/left.png",
+        "../skybox/top.png",
+        "../skybox/bottom.png",
+        "../skybox/front.png",
+        "../skybox/back.png"
     };
     skybox = new Skybox(cubemapFaces);
 }
