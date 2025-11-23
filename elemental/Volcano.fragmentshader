@@ -1,10 +1,15 @@
 #version 330 core
 
-// Output color
+in vec2 vTexCoord;
+
 out vec4 fragment_color;
 
 uniform vec4 uColor;
+uniform sampler2D uTerrainTexture;
+uniform float uTextureTiling;
 
 void main() {
-    fragment_color = uColor;
+    vec2 tiledUV = vTexCoord * uTextureTiling;
+    vec4 texColor = texture(uTerrainTexture, tiledUV);
+    fragment_color = texColor * uColor;
 }

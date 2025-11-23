@@ -19,6 +19,7 @@
 #include <common/util.h>
 #include <common/camera.h>
 #include <common/model.h>
+#include <common/texture.h>
 #include <common/Volcano.h>
 #include <common/Skybox.h>
 
@@ -40,11 +41,15 @@ GLFWwindow* window;
 Camera* camera;
 GLuint shaderProgram;
 GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
-GLuint colorLocation;
+GLint colorLocation;
+GLint terrainTextureLocation;
+GLint textureTilingLocation;
 // Removed unused lightLocation for simplified shaders
 // GLuint lightLocation;
 Volcano* volcano = nullptr;
 Skybox* skybox = nullptr;
+GLuint terrainTexture = 0;
+float terrainTextureTiling = 12.0f;
 
 void createContext()
 {
@@ -56,14 +61,23 @@ void createContext()
     viewMatrixLocation = glGetUniformLocation(shaderProgram, "V");
     modelMatrixLocation = glGetUniformLocation(shaderProgram, "M");
     colorLocation = glGetUniformLocation(shaderProgram, "uColor");
+    terrainTextureLocation = glGetUniformLocation(shaderProgram, "uTerrainTexture");
+    textureTilingLocation = glGetUniformLocation(shaderProgram, "uTextureTiling");
     // lightLocation no longer needed
     // lightLocation = glGetUniformLocation(shaderProgram, "light_position_worldspace");
 
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     // volcano
     // Create procedural volcano with grid size 194, terrain width 950.0, height scale 17.0
     volcano = new Volcano(194, 950.0f, 17.0f);
+
+    terrainTexture = loadBMP("../elemental/volcano.bmp");
+    glBindTexture(GL_TEXTURE_2D, terrainTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 
     std::vector<std::string> cubemapFaces = {
         "../skybox/right.png",
@@ -83,6 +97,10 @@ void free()
     // Clean up allocated objects
     if (volcano) delete volcano;
     if (skybox) delete skybox;
+    if (terrainTexture) {
+        glDeleteTextures(1, &terrainTexture);
+        terrainTexture = 0;
+    }
 
     glfwTerminate();
 }
@@ -106,8 +124,9 @@ void mainLoop()
         {
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             skybox->Draw(viewMatrix, projectionMatrix);
-            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
         }
+
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         glUseProgram(shaderProgram);
 
@@ -117,7 +136,19 @@ void mainLoop()
         glUniformMatrix4fv(modelMatrixLocation, 1, GL_FALSE, &modelMatrix[0][0]);
         // glUniform3f(lightLocation, lightPos.x, lightPos.y, lightPos.z); // light disabled
 
-    glUniform4f(colorLocation, 1.0f, 0.0f, 0.0f, 1.0f);
+        if (terrainTextureLocation >= 0 && terrainTexture != 0) {
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, terrainTexture);
+            glUniform1i(terrainTextureLocation, 0);
+        }
+
+        if (textureTilingLocation >= 0) {
+            glUniform1f(textureTilingLocation, terrainTextureTiling);
+        }
+
+        if (colorLocation >= 0) {
+            glUniform4f(colorLocation, 1.0f, 1.0f, 1.0f, 1.0f);
+        }
 
         // draw volcano
         volcano->Draw();
