@@ -152,6 +152,8 @@ void Volcano::generateGeometry() {
     const float riverInnerRadius = volcanoSigma * 1.1f;   // start carving just outside the cone
     const float riverOuterRadius = riverInnerRadius + m_width * 0.45f; // let it flow outward
     const float riverRadialBlend = volcanoSigma * 0.5f;   // radial falloff for entering/exiting the river zone
+    const float riverDiagonalSlope = 0.35f;               // slope for diagonal drift (x vs z)
+    const float riverDiagonalOffset = -halfWidth * 0.2f;  // offset to shift the river laterally
 
     for (int i = 0; i < m_gridSize; ++i) {
         for (int j = 0; j < m_gridSize; ++j) {
@@ -182,7 +184,8 @@ void Volcano::generateGeometry() {
             float normalizedZ = (z + halfWidth) / m_width; // 0..1 along terrain depth
             float sCurve = std::sin(normalizedZ * PI * 1.15f);
             float sNoise = std::sin(normalizedZ * PI * 3.6f + 1.37f);
-            float riverCenterX = riverAmplitudeX * sCurve + riverNoiseX * sNoise;
+            float diagonalDrift = riverDiagonalSlope * z + riverDiagonalOffset;
+            float riverCenterX = diagonalDrift + riverAmplitudeX * sCurve + riverNoiseX * sNoise;
 
             float riverDistanceX = std::abs(x - riverCenterX);
             float lateralMask = 1.0f - glm::smoothstep(riverWidth,

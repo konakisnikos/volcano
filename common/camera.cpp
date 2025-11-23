@@ -5,7 +5,7 @@
 using namespace glm;
 
 Camera::Camera(GLFWwindow* window) : window(window) {
-    position = vec3(0, 20, 150);
+    position = vec3(0, 50, 150);
     horizontalAngle = 3.14f;
     verticalAngle = 0.0f;
     FoV = 45.0f;
