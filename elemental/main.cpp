@@ -60,8 +60,8 @@ void createContext()
     glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
 
     // volcano
-    // Create procedural volcano with grid size 50, terrain width 20.0, height scale 6.5
-    volcano = new Volcano(50, 80.0f, 5.5f);
+    // Create procedural volcano with grid size 30, terrain width 30.0, height scale 5.5
+    volcano = new Volcano(30, 30.0f, 5.5f);
 }
 
 void free()
