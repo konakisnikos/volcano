@@ -61,7 +61,7 @@ void createContext()
 
     // volcano
     // Create procedural volcano with grid size 64, terrain width 150.0, height scale 12.0
-    volcano = new Volcano(64, 150.0f, 12.0f);
+    volcano = new Volcano(94, 250.0f, 12.0f);
 }
 
 void free()

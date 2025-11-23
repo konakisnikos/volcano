@@ -146,14 +146,14 @@ void Volcano::generateGeometry() {
     // River controls: an S-shaped channel hugging the base of the volcano
     const float riverAmplitudeX = halfWidth * 0.28f;      // lateral swing of the S curve
     const float riverNoiseX = halfWidth * 0.08f;          // higher-frequency wobble for randomness
-    const float riverWidth = m_width * 0.035f;            // half-width of the carved channel
+    const float riverWidth = m_width * 0.025f;            // half-width of the carved channel
     const float riverBlend = riverWidth * 2.2f;           // softens the river banks
     const float riverDepth = m_heightScale * 0.35f;       // excavation depth of the river bed
-    const float riverInnerRadius = volcanoSigma * 1.1f;   // start carving just outside the cone
-    const float riverOuterRadius = riverInnerRadius + m_width * 0.45f; // let it flow outward
-    const float riverRadialBlend = volcanoSigma * 0.5f;   // radial falloff for entering/exiting the river zone
-    const float riverDiagonalSlope = 0.35f;               // slope for diagonal drift (x vs z)
-    const float riverDiagonalOffset = -halfWidth * 0.2f;  // offset to shift the river laterally
+    const float riverInnerRadius = volcanoSigma * 0.95f;  // begin carving mid-slope near cone base
+    const float riverOuterRadius = riverInnerRadius + m_width * 0.55f; // extend farther across terrain
+    const float riverRadialBlend = volcanoSigma * 0.35f;  // tighter falloff near start, softer far away
+    const float riverDiagonalSlope = 0.55f;               // stronger diagonal drift toward +X as Z increases
+    const float riverDiagonalOffset = -halfWidth * 0.05f; // shift the origin so it starts near cone base
 
     for (int i = 0; i < m_gridSize; ++i) {
         for (int j = 0; j < m_gridSize; ++j) {
@@ -199,7 +199,9 @@ void Volcano::generateGeometry() {
                                                        riverOuterRadius + riverRadialBlend,
                                                        distanceFromCenter));
 
-            float riverMask = lateralMask * radialMask;
+            float forwardMask = glm::smoothstep(0.0f, halfWidth * 0.18f, z);
+
+            float riverMask = lateralMask * radialMask * forwardMask;
             y -= riverMask * riverDepth;
 
             gridPositions.emplace_back(x, y, z);
