@@ -5,11 +5,11 @@
 using namespace glm;
 
 Camera::Camera(GLFWwindow* window) : window(window) {
-    position = vec3(0, 10, 40);
+    position = vec3(0, 20, 150);
     horizontalAngle = 3.14f;
     verticalAngle = 0.0f;
     FoV = 45.0f;
-    speed = 3.0f;
+    speed = 12.0f;
     mouseSpeed = 0.001f;
     fovSpeed = 2.0f;
 }

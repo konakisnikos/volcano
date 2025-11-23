@@ -130,14 +130,19 @@ void Volcano::generateGeometry() {
     float halfWidth = m_width * 0.5f;
 
     constexpr float BASE_FREQUENCY = 0.05f;
-    constexpr int NOISE_OCTAVES = 5;
+    constexpr int NOISE_OCTAVES = 6;
     constexpr float NOISE_PERSISTENCE = 0.5f;
     constexpr float NOISE_LACUNARITY = 2.0f;
     const glm::vec2 NOISE_OFFSET(113.7f, -57.3f);
 
-    const float noiseAmplitude = m_heightScale * 0.5f;
-    const float volcanoSigma = m_width * 0.18f;
-    const float volcanoAmplitude = m_heightScale * 1.6f;
+    // --- Tunable height controls -----------------------------------------------------
+    const float noiseAmplitude = m_heightScale * 0.45f;   // amplitude of background terrain noise
+    const float volcanoSigma = m_width * 0.12f;           // controls main cone width
+    const float volcanoAmplitude = m_heightScale * 1.6f;  // controls cone height
+
+    const float craterRadius = volcanoSigma * 0.45f;      // radius of crater interior
+    const float craterDepth  = volcanoAmplitude * 0.65f;  // depth of crater pit
+    const float craterBlend  = craterRadius * 0.6f;       // smoothing width for crater rim
 
     for (int i = 0; i < m_gridSize; ++i) {
         for (int j = 0; j < m_gridSize; ++j) {
@@ -152,9 +157,17 @@ void Volcano::generateGeometry() {
                 NOISE_LACUNARITY
             );
 
-            float noiseHeight = sample * noiseAmplitude;
-            float volcanoHeight = gaussianPeak(x, z, volcanoSigma, volcanoAmplitude);
-            float y = noiseHeight + volcanoHeight;
+        float noiseHeight = sample * noiseAmplitude;
+        float volcanoHeight = gaussianPeak(x, z, volcanoSigma, volcanoAmplitude);
+
+        float distanceFromCenter = std::sqrt(x * x + z * z);
+
+        float craterMask = glm::smoothstep(craterRadius + craterBlend,
+                           craterRadius,
+                           distanceFromCenter);
+        float craterHeight = -craterDepth * craterMask;
+
+        float y = noiseHeight + volcanoHeight + craterHeight;
 
             gridPositions.emplace_back(x, y, z);
             gridTexCoords.emplace_back(
