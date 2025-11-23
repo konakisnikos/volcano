@@ -48,6 +48,7 @@ set(SRC
   common/model.cpp
   common/texture.cpp
   common/Volcano.cpp
+  common/Skybox.cpp
 )
 
 add_executable(elemental ${SRC})
@@ -56,6 +57,8 @@ add_executable(elemental ${SRC})
 set(SHADERS
   elemental/Volcano.vertexshader
   elemental/Volcano.fragmentshader
+  elemental/Skybox.vertexshader
+  elemental/Skybox.fragmentshader
 )
 set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
 source_group("shaders" FILES ${SHADERS})
@@ -74,6 +77,8 @@ target_link_libraries(elemental PRIVATE ${ALL_LIBS})
 add_custom_command(TARGET elemental POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/Volcano.vertexshader $<TARGET_FILE_DIR:elemental>
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/Volcano.fragmentshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/Skybox.vertexshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/Skybox.fragmentshader $<TARGET_FILE_DIR:elemental>
 )
 
 # Grouping for IDE organization (optional)

@@ -20,6 +20,7 @@
 #include <common/camera.h>
 #include <common/model.h>
 #include <common/Volcano.h>
+#include <common/Skybox.h>
 
 using namespace std;
 using namespace glm;
@@ -42,7 +43,8 @@ GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
 GLuint colorLocation;
 // Removed unused lightLocation for simplified shaders
 // GLuint lightLocation;
-Volcano* volcano;
+Volcano* volcano = nullptr;
+Skybox* skybox = nullptr;
 
 void createContext()
 {
@@ -62,6 +64,16 @@ void createContext()
     // volcano
     // Create procedural volcano with grid size 64, terrain width 150.0, height scale 12.0
     volcano = new Volcano(94, 250.0f, 12.0f);
+
+    std::vector<std::string> cubemapFaces = {
+        "../skybox/right.png",
+        "../skybox/left.png",
+        "../skybox/top.png",
+        "../skybox/bottom.png",
+        "../skybox/front.png",
+        "../skybox/back.png"
+    };
+    skybox = new Skybox(cubemapFaces);
 }
 
 void free()
@@ -70,6 +82,7 @@ void free()
 
     // Clean up allocated objects
     if (volcano) delete volcano;
+    if (skybox) delete skybox;
 
     glfwTerminate();
 }
@@ -82,14 +95,21 @@ void mainLoop()
     {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(shaderProgram);
-
         // camera
         camera->update();
 
         mat4 projectionMatrix = camera->projectionMatrix;
         mat4 viewMatrix = camera->viewMatrix;
         mat4 modelMatrix = mat4(1.0);
+
+        if (skybox)
+        {
+            glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+            skybox->Draw(viewMatrix, projectionMatrix);
+            glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        }
+
+        glUseProgram(shaderProgram);
 
         // transfer uniforms to GPU
         glUniformMatrix4fv(projectionMatrixLocation, 1, GL_FALSE, &projectionMatrix[0][0]);
