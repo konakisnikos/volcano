@@ -1,6 +1,8 @@
 #include "Volcano.h"
 #include <cmath>
 #include <iostream>
+#include <SOIL.h>
+
 
 namespace {
 constexpr float PI = 3.14159265f;
@@ -102,6 +104,7 @@ float gaussianPeak(float x, float z, float sigma, float amplitude) {
 Volcano::Volcano(int gridSize, float maxTerrainWidth, float heightScale)
     : m_gridSize(gridSize), m_width(maxTerrainWidth), m_heightScale(heightScale), m_drawable(nullptr)
 {
+    loadHeightMap("/Users/nikos/Desktop/elemental/elemental/heightmap_8bit.png");
     generateGeometry();
     calculateNormals();
     m_drawable = new Drawable(m_positions, m_texCoords, m_normals);
@@ -140,7 +143,7 @@ void Volcano::generateGeometry() {
     const float volcanoAmplitude = m_heightScale * 7.4f;  // slightly lower peak height
 
     const float craterRadius = volcanoSigma * 0.3f;       // crater size scales with wider cone
-    const float craterDepth  = volcanoAmplitude * 0.25f;  // shallower depression for smoother summit
+    const float craterDepth  = volcanoAmplitude * 0.55f;  // shallower depression for smoother summit
     const float craterBlend  = craterRadius * 0.75f;      // soften crater rim transition
 
     // River controls: an S-shaped channel hugging the base of the volcano
@@ -158,6 +161,18 @@ void Volcano::generateGeometry() {
     const float riverStartRadius = volcanoSigma * 0.55f;  // within this radius enforce near-center origin
     const float riverStartBlendRadius = riverStartRadius * 0.6f;
 
+    auto sampleHeightMap = [this](int i, int j, float fallbackNoiseHeight) {
+        if (m_heightMap.empty()) {
+            return fallbackNoiseHeight; // no heightmap loaded
+        }
+        int idx = i * m_gridSize + j;
+        if (idx < 0 || idx >= static_cast<int>(m_heightMap.size())) {
+            return fallbackNoiseHeight;
+        }
+        // m_heightMap is in [0,1]; scale to volcano height range via m_heightScale
+        return m_heightMap[idx] * (m_heightScale * 15.0f); // try 10–50x and tune
+    };
+
     for (int i = 0; i < m_gridSize; ++i) {
         for (int j = 0; j < m_gridSize; ++j) {
             float x = static_cast<float>(j) * step - halfWidth;
@@ -172,6 +187,9 @@ void Volcano::generateGeometry() {
             );
 
             float noiseHeight = sample * noiseAmplitude;
+            // Replace procedural noiseHeight by heightmap value when available
+            noiseHeight = sampleHeightMap(i, j, noiseHeight);
+
             float volcanoHeight = gaussianPeak(x, z, volcanoSigma, volcanoAmplitude);
 
             float distanceFromCenter = std::sqrt(x * x + z * z);
@@ -281,4 +299,47 @@ void Volcano::Draw() {
         m_drawable->bind();
         m_drawable->draw();
     }
+}
+
+void Volcano::loadHeightMap(const std::string& path) {
+    int width = 0;
+    int height = 0;
+    int channels = 0;
+
+    unsigned char* data = SOIL_load_image(path.c_str(), &width, &height, &channels, SOIL_LOAD_AUTO);
+    if (!data) {
+        std::cerr << "Failed to load heightmap image: " << path << "\n";
+        return;
+    }
+
+    if (width <= 0 || height <= 0) {
+        std::cerr << "Invalid heightmap dimensions: " << width << "x" << height << " for " << path << "\n";
+        SOIL_free_image_data(data);
+        return;
+    }
+
+    m_heightMap.clear();
+    m_heightMap.resize(m_gridSize * m_gridSize, 0.0f);
+
+    // Sample image in [0, width-1]x[0, height-1] over the logical grid [0, m_gridSize-1]^2
+    for (int i = 0; i < m_gridSize; ++i) {
+        for (int j = 0; j < m_gridSize; ++j) {
+            float u = static_cast<float>(j) / (m_gridSize - 1); // 0..1
+            float v = static_cast<float>(i) / (m_gridSize - 1); // 0..1
+
+            int imgX = static_cast<int>(u * (width  - 1));
+            int imgY = static_cast<int>(v * (height - 1));
+
+            int idx = (imgY * width + imgX) * channels;
+            unsigned char r = data[idx];
+            unsigned char g = channels > 1 ? data[idx + 1] : r;
+            unsigned char b = channels > 2 ? data[idx + 2] : r;
+
+            float gray = (static_cast<float>(r) + static_cast<float>(g) + static_cast<float>(b)) / (3.0f * 255.0f);
+            m_heightMap[i * m_gridSize + j] = gray; // store in [0,1]
+           
+        }
+    }
+
+    SOIL_free_image_data(data);
 }

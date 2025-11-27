@@ -4,12 +4,11 @@ in vec2 vTexCoord;
 
 out vec4 fragment_color;
 
-uniform vec4 uColor;
+
 uniform sampler2D uTerrainTexture;
-uniform float uTextureTiling;
 
 void main() {
-    vec2 tiledUV = vTexCoord * uTextureTiling;
-    vec4 texColor = texture(uTerrainTexture, tiledUV);
-    fragment_color = texColor * uColor;
+    vec4 color = vec4(1.0, 0.0, 0.0, 1.0);
+    vec4 texColor = texture(uTerrainTexture, vTexCoord);
+    fragment_color = color;
 }
