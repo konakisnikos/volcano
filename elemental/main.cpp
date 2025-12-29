@@ -20,8 +20,9 @@
 #include <common/camera.h>
 #include <common/model.h>
 #include <common/texture.h>
-#include <common/Volcano.h>
-#include <common/Skybox.h>
+#include <elemental/elements/Volcano.h>
+#include <elemental/elements/Skybox.h>
+#include <common/light.h>
 
 using namespace std;
 using namespace glm;
@@ -39,56 +40,74 @@ void free();
 // Global variables
 GLFWwindow* window;
 Camera* camera;
-GLuint shaderProgram;
+GLuint volcanoShaderProgram;
 GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
+GLuint terrainTextureSampler;
+GLuint terrainTexture;
 
-GLint terrainTextureSampler;
+Light* moonlight;
 
-// Removed unused lightLocation for simplified shaders
-// GLuint lightLocation;
-Volcano* volcano = nullptr;
-Skybox* skybox = nullptr;
-GLuint terrainTexture = 0;
+struct Material {
+    glm::vec4 Ks, Kd, Ka;
+    GLfloat Ns;
+};
 
+Material volcanoMaterial = {
+    glm::vec4(0.05f, 0.05f, 0.05f, 1.0f), // Ks
+    glm::vec4(0.4f, 0.35f, 0.35f, 1.0f), // Kd
+    glm::vec4(0.1f, 0.1f, 0.15f, 1.0f), // Ka
+    10.0f                             // Ns
+};
+
+Volcano* volcano;
+Skybox* skybox;
 
 void createContext()
 {
-    // Create and compile our GLSL program from the shaders
-    shaderProgram = loadShaders("../elemental/Volcano.vertexshader", "../elemental/Volcano.fragmentshader");
+    // Load shaders
+    volcanoShaderProgram = loadShaders("../elemental/shaders/Volcano.vertexshader", "../elemental/shaders/Volcano.fragmentshader");
 
-    // get pointers to the uniform variables
-    projectionMatrixLocation = glGetUniformLocation(shaderProgram, "P");
-    viewMatrixLocation = glGetUniformLocation(shaderProgram, "V");
-    modelMatrixLocation = glGetUniformLocation(shaderProgram, "M");
-    // lightLocation no longer needed
-    // lightLocation = glGetUniformLocation(shaderProgram, "light_position_worldspace");
+    // Get uniform locations for main shader
+    projectionMatrixLocation = glGetUniformLocation(volcanoShaderProgram, "P");
+    viewMatrixLocation = glGetUniformLocation(volcanoShaderProgram, "V");
+    modelMatrixLocation = glGetUniformLocation(volcanoShaderProgram, "M");
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-    // volcano
-    // Create procedural volcano with grid size 194, terrain width 950.0, height scale 17.0
-    volcano = new Volcano(194, 950.0f, 17.0f);
+    // Create volcano
+    volcano = new Volcano(512, 1350.0f, 20.0f, glm::vec2(0.0f, -400.0f));
 
-    //terrainTexture = loadSOIL("../elemental/Diffusemap.png");
+    // Load terrain texture
+    terrainTexture = loadSOIL("/Users/nikos/Desktop/elemental/elemental/assets/Diffusemap.png");
 
-    //terrainTextureSampler = glGetUniformLocation(shaderProgram, "uTerrainTexture");
+    terrainTextureSampler = glGetUniformLocation(volcanoShaderProgram, "uTerrainTexture");
+
+    glBindTexture(GL_TEXTURE_2D, terrainTexture);
+
+    // Texture parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenerateMipmap(GL_TEXTURE_2D); 
+
+    glBindTexture(GL_TEXTURE_2D, 0);
 
     // skybox
-
     std::vector<std::string> cubemapFaces = {
-        "../skybox/right.png",
-        "../skybox/left.png",
-        "../skybox/top.png",
-        "../skybox/bottom.png",
-        "../skybox/front.png",
-        "../skybox/back.png"
+        "../skybox_blue/right.png",
+        "../skybox_blue/left.png",
+        "../skybox_blue/top.png",
+        "../skybox_blue/bottom.png",
+        "../skybox_blue/front.png",
+        "../skybox_blue/back.png"
     };
     skybox = new Skybox(cubemapFaces);
 }
 
 void free()
 {
-    glDeleteProgram(shaderProgram);
+    glDeleteProgram(volcanoShaderProgram);
 
     // Clean up allocated objects
     if (volcano) delete volcano;
@@ -103,14 +122,28 @@ void free()
 
 void mainLoop()
 {
-    // glm::vec3 lightPos = glm::vec3(0, 0, 4); // no lighting for now
+    double lastTime = glfwGetTime();
 
     do
     {
+        double currentTime = glfwGetTime();
+        float deltaTime = float(currentTime - lastTime)/2;
+        lastTime = currentTime;
+
+        // Update light
+        moonlight->update();
+        
+        
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         // camera
         camera->update();
+
+        cout << "Camera position: "
+             << camera->position.x << ", "
+             << camera->position.y << ", "
+             << camera->position.z << " \r";
+        cout.flush();
 
         mat4 projectionMatrix = camera->projectionMatrix;
         mat4 viewMatrix = camera->viewMatrix;
@@ -122,23 +155,31 @@ void mainLoop()
             skybox->Draw(viewMatrix, projectionMatrix);
         }
 
-        glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
-        glUseProgram(shaderProgram);
+        glUseProgram(volcanoShaderProgram);
 
         // transfer uniforms to GPU
         glUniformMatrix4fv(projectionMatrixLocation, 1, GL_FALSE, &projectionMatrix[0][0]);
         glUniformMatrix4fv(viewMatrixLocation, 1, GL_FALSE, &viewMatrix[0][0]);
         glUniformMatrix4fv(modelMatrixLocation, 1, GL_FALSE, &modelMatrix[0][0]);
-        // glUniform3f(lightLocation, lightPos.x, lightPos.y, lightPos.z); // light disabled
 
+        // Bind terrain texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, terrainTexture);
+        glUniform1i(terrainTextureSampler, 0);
         
-        //glActiveTexture(GL_TEXTURE0);
-        //glBindTexture(GL_TEXTURE_2D, terrainTexture);
-        //glUniform1i(terrainTextureSampler, 0);
-        
+        // Send time uniform
+        glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_Time"), currentTime);
 
-        
+        moonlight->uploadLight(volcanoShaderProgram, 0);
+
+        // Upload simple material properties
+        glUniform4f(glGetUniformLocation(volcanoShaderProgram, "Ka"), 
+                    volcanoMaterial.Ka.r, volcanoMaterial.Ka.g, volcanoMaterial.Ka.b, volcanoMaterial.Ka.a);
+        glUniform4f(glGetUniformLocation(volcanoShaderProgram, "Ks"), 
+                    volcanoMaterial.Ks.r, volcanoMaterial.Ks.g, volcanoMaterial.Ks.b, volcanoMaterial.Ks.a);
+        glUniform1f(glGetUniformLocation(volcanoShaderProgram, "Ns"), volcanoMaterial.Ns);
 
         // draw volcano
         volcano->Draw();
@@ -161,7 +202,7 @@ void initialize()
     glfwWindowHint(GLFW_SAMPLES, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
-    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE); // To make MacOS happy
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     // Open a window and create its OpenGL context
@@ -200,7 +241,6 @@ void initialize()
 
     // Enable depth test
     glEnable(GL_DEPTH_TEST);
-    // Accept fragment if it closer to the camera than the former one
     glDepthFunc(GL_LESS);
 
     // enable blending
@@ -214,6 +254,13 @@ void initialize()
 
     // Create camera
     camera = new Camera(window);
+
+    moonlight = new Light(window,
+        vec4{0.05, 0.05, 0.25, 1.0},
+        vec4{0.4, 0.6, 0.9, 1.0},
+        vec4{0.8, 0.9, 1.0, 1.0},
+        vec3{ 0, 300, 350 }
+    );
 }
 
 int main(void)

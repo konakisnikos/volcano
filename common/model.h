@@ -68,7 +68,8 @@ public:
     Drawable(
         const std::vector<glm::vec3>& vertices,
         const std::vector<glm::vec2>& uvs = VEC_VEC2_DEFAULT_VALUE,
-        const std::vector<glm::vec3>& normals = VEC_VEC3_DEFAULT_VALUE);
+        const std::vector<glm::vec3>& normals = VEC_VEC3_DEFAULT_VALUE,
+        bool useIndexing = true);
 
     ~Drawable();
 
@@ -76,6 +77,7 @@ public:
 
     /* Bind VAO before calling draw */
     void draw(int mode = GL_TRIANGLES);
+    void addExtraAttribute(int layoutIndex, int componentCount, const std::vector<float>& data);
 
 public:
     std::vector<glm::vec3> vertices, normals, indexedVertices, indexedNormals;
@@ -86,6 +88,7 @@ public:
 
 private:
     void createContext();
+    bool m_useIndexing;
 };
 
 /*****************************************************************************/

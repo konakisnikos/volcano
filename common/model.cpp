@@ -339,7 +339,8 @@ Drawable::Drawable(string path) {
 }
 
 Drawable::Drawable(const vector<vec3>& vertices, const vector<vec2>& uvs,
-                   const vector<vec3>& normals) : vertices(vertices), uvs(uvs), normals(normals) {
+                   const vector<vec3>& normals,
+                   bool useIndexing) : vertices(vertices), uvs(uvs), normals(normals), m_useIndexing(useIndexing) {
     createContext();
 }
 
@@ -360,42 +361,92 @@ void Drawable::draw(int mode) {
 }
 
 void Drawable::createContext() {
-    indices = vector<unsigned int>();
-    indexVBO(vertices, uvs, normals, indices, indexedVertices, indexedUVS, indexedNormals);
+    // Reset the indices vector
+    indices = std::vector<unsigned int>();
+
+    // --- STEP 1: Decide how to process the data ---
+    if (m_useIndexing) {
+        // STANDARD MODE (For OBJ files):
+        // Uses the helper to remove duplicates and create optimized indices.
+        // This is what was causing your stripe bug because it re-ordered the vertices!
+        indexVBO(vertices, uvs, normals, indices, indexedVertices, indexedUVS, indexedNormals);
+    } 
+    else {
+        // RAW MODE (For Volcano/Terrain):
+        // Do NOT shuffle. Copy data 1:1 so it matches our custom River/Dist arrays perfectly.
+        indexedVertices = vertices;
+        indexedUVS = uvs;
+        indexedNormals = normals;
+
+        // Generate simple sequential indices (0, 1, 2, 3...)
+        // This ensures the triangle order stays exactly how we built it in Volcano.cpp
+        indices.reserve(vertices.size());
+        for (unsigned int i = 0; i < vertices.size(); ++i) {
+            indices.push_back(i);
+        }
+    }
+
+    // --- STEP 2: Standard OpenGL Uploads (Same as before) ---
 
     glGenVertexArrays(1, &VAO);
     glBindVertexArray(VAO);
 
+    // Upload Vertices (Layout 0)
     glGenBuffers(1, &verticesVBO);
     glBindBuffer(GL_ARRAY_BUFFER, verticesVBO);
-    glBufferData(GL_ARRAY_BUFFER, indexedVertices.size() * sizeof(vec3),
+    glBufferData(GL_ARRAY_BUFFER, indexedVertices.size() * sizeof(glm::vec3),
                  &indexedVertices[0], GL_STATIC_DRAW);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, NULL);
     glEnableVertexAttribArray(0);
 
+    // Upload Normals (Layout 1)
     if (indexedNormals.size() != 0) {
         glGenBuffers(1, &normalsVBO);
         glBindBuffer(GL_ARRAY_BUFFER, normalsVBO);
-        glBufferData(GL_ARRAY_BUFFER, indexedNormals.size() * sizeof(vec3),
+        glBufferData(GL_ARRAY_BUFFER, indexedNormals.size() * sizeof(glm::vec3),
                      &indexedNormals[0], GL_STATIC_DRAW);
         glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, NULL);
         glEnableVertexAttribArray(1);
     }
 
+    // Upload UVs (Layout 2)
     if (indexedUVS.size() != 0) {
         glGenBuffers(1, &uvsVBO);
         glBindBuffer(GL_ARRAY_BUFFER, uvsVBO);
-        glBufferData(GL_ARRAY_BUFFER, indexedUVS.size() * sizeof(vec2),
+        glBufferData(GL_ARRAY_BUFFER, indexedUVS.size() * sizeof(glm::vec2),
                      &indexedUVS[0], GL_STATIC_DRAW);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, NULL);
         glEnableVertexAttribArray(2);
     }
 
-    // Generate a buffer for the indices as well
+    // Upload Indices
     glGenBuffers(1, &elementVBO);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementVBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int),
                  &indices[0], GL_STATIC_DRAW);
+                 
+    // Unbind to prevent accidental modifications later
+    glBindVertexArray(0);
+}
+
+void Drawable::addExtraAttribute(int layoutIndex, int componentCount, const std::vector<float>& data) {
+    // 1. OPEN THE DOOR (Bind the VAO)
+    // CHECK THIS VARIABLE NAME! Is it 'VAO', 'm_VAO', 'vao'?
+    glBindVertexArray(VAO); 
+
+    // 2. CREATE A NEW BUFFER FOR THE DATA
+    GLuint buffer;
+    glGenBuffers(1, &buffer);
+    glBindBuffer(GL_ARRAY_BUFFER, buffer);
+    glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STATIC_DRAW);
+
+    // 3. TELL OPENGL "THIS IS DATA LANE #3" (or #4)
+    glEnableVertexAttribArray(layoutIndex);
+    glVertexAttribPointer(layoutIndex, componentCount, GL_FLOAT, GL_FALSE, 0, (void*)0);
+
+    // 4. CLOSE THE DOOR
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glBindVertexArray(0);
 }
 
 /*****************************************************************************/

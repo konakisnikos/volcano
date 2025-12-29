@@ -1,0 +1,44 @@
+#version 330 core
+
+// INPUTS (Must match your C++ VBO layout)
+layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 1) in vec3 vertexNormal_modelspace;
+layout(location = 2) in vec2 aTexCoords;
+
+// --- NEW INPUTS (The Map & The Rules) ---
+layout(location = 3) in float inRiverMask; // 1.0 = River, 0.0 = Rock
+layout(location = 4) in float inDist;      // Distance from crater (for animation)
+// ----------------------------------------
+
+// UNIFORMS
+uniform mat4 M;
+uniform mat4 V;
+uniform mat4 P;
+uniform vec3 light_position_worldspace; 
+
+// OUTPUTS to Fragment Shader
+out vec4 vertex_position_cameraspace;
+out vec4 vertex_normal_cameraspace;
+out vec4 light_position_cameraspace;
+out vec2 vTexCoord;
+
+// --- NEW OUTPUTS (Passing data to the pixel painter) ---
+out float vRiverMask;
+out float vDist;
+// -------------------------------------------------------
+
+void main() {
+    
+    gl_Position =  P * V * M * vec4(vertexPosition_modelspace, 1);
+
+    vertex_position_cameraspace = V * M * vec4(vertexPosition_modelspace, 1);
+    vertex_normal_cameraspace = V * M * vec4(vertexNormal_modelspace, 0);
+    light_position_cameraspace = V * vec4(light_position_worldspace, 1.0); 
+
+    // Pass Texture Coordinates
+    vTexCoord = aTexCoords;
+
+    // --- PASS THE NEW DATA ---
+    vRiverMask = inRiverMask;
+    vDist = inDist;
+}

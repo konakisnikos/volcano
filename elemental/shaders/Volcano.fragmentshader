@@ -1,0 +1,120 @@
+#version 330 core
+
+// INPUTS from Vertex Shader
+in vec4 vertex_position_cameraspace;
+in vec4 vertex_normal_cameraspace;
+in vec2 vTexCoord;
+
+// --- NEW INPUTS (From your fixed Vertex Shader) ---
+in float vRiverMask; // 1.0 = River, 0.0 = Rock
+in float vDist;      // Distance from top
+// --------------------------------------------------
+
+out vec4 fragment_color;
+
+// TEXTURES
+uniform sampler2D uTerrainTexture; 
+
+// UNIFORMS
+uniform float u_Time; // <--- YOU MUST SEND THIS FROM C++ (glfwGetTime)
+
+struct Light {
+    vec4 La; 
+    vec4 Ld; 
+    vec4 Ls; 
+    vec3 lightPosition_worldspace;
+};
+uniform Light light[2]; 
+
+// Material properties
+uniform vec4 Ka; 
+uniform vec4 Ks; 
+uniform float Ns; 
+
+void main()
+{
+   // --- 1. BASE COLOR (ROCK) ---
+   float maskValue = texture(uTerrainTexture, vTexCoord).r;
+   vec3 darkRock = vec3(0.1, 0.12, 0.15); 
+   vec3 lightRock = vec3(0.3, 0.35, 0.4); 
+   vec3 mixedRockColor = mix(darkRock, lightRock, maskValue);
+
+   // --- 2. LAVA LOGIC (THE NEW PART) ---
+   
+   // A. Calculate Flow
+   float speed = 20.0; // How fast lava moves down units/sec
+   float flowHead = u_Time * speed; 
+   
+   // Create a mask: 1.0 if lava has reached this point, 0.0 if not.
+   // smoothstep makes the leading edge soft instead of a hard line.
+   float flowMask = 1.0 - smoothstep(flowHead, flowHead + 10.0, vDist);
+   
+   // B. Combine River Shape + Flow Animation
+   float currentLavaPresence = vRiverMask * flowMask;
+   float lavaMix = smoothstep(0.1, 0.5, currentLavaPresence); // Soften edges
+
+   // C. Lava Color
+   // Make center of river brighter (vRiverMask is higher in center)
+   vec3 lavaBase = vec3(1.0, 0.4, 0.0); // Orange
+   vec3 lavaHot  = vec3(1.0, 0.9, 0.2); // Yellow/White
+   vec3 finalLavaColor = mix(lavaBase, lavaHot, vRiverMask);
+
+   // D. Create the Final Material Color
+   // If lavaMix is 1.0, use Lava. If 0.0, use Rock.
+   vec3 finalAlbedo = mix(mixedRockColor, finalLavaColor, lavaMix);
+   vec4 materialKd = vec4(finalAlbedo, 1.0);
+
+
+   // --- 3. BUMP MAPPING (DETAIL) ---
+   float offset = 1.0 / 1024.0; 
+   float hCenter = texture(uTerrainTexture, vTexCoord).r;
+   float hRight  = texture(uTerrainTexture, vTexCoord + vec2(offset, 0.0)).r;
+   float hTop    = texture(uTerrainTexture, vTexCoord + vec2(0.0, offset)).r;
+
+   // Tip: Reduce bumpiness where lava is (lava is liquid, so it's smoother)
+   float bumpStrength = 5.0 * (1.0 - lavaMix); 
+
+   float dX = (hCenter - hRight) * bumpStrength; 
+   float dY = (hCenter - hTop)   * bumpStrength;
+
+   vec3 baseNormal = normalize(vertex_normal_cameraspace.xyz);
+   vec3 bumpNormal = normalize(baseNormal + vec3(dX, dY, 0.0)); 
+   vec4 N = vec4(bumpNormal, 0.0);
+
+
+   // --- 4. LIGHTING ---
+   vec4 E = normalize(vec4(0, 0, 0, 1) - vertex_position_cameraspace); 
+   vec3 lightDir3 = normalize(light[0].lightPosition_worldspace);
+   vec4 L = vec4(lightDir3, 0.0); 
+
+   // Ambient
+   vec4 Ia = light[0].La * Ka;
+
+   // Diffuse (Using our mixed Rock/Lava color)
+   float cosTheta = clamp(dot(N, L), 0, 1);
+   vec4 Id = light[0].Ld * materialKd * cosTheta;
+
+   // Specular
+   vec4 R = reflect(-L, N);
+   float cosAlpha = clamp(dot(E, R), 0, 1);
+   float specular_factor = pow(cosAlpha, Ns);
+   
+   // Reduce specular on rock, keep it on lava (liquid is shiny)
+   float liquidSpec = max(specular_factor, lavaMix * 2.0); 
+   vec4 Is = light[0].Ls * Ks * specular_factor;
+
+
+   // --- 5. RIM LIGHT ---
+   float rimFactor = 1.0 - max(dot(E, N), 0.0);
+   rimFactor = pow(rimFactor, 3.0); 
+   vec4 rimColor = light[0].Ld * 1.5 * rimFactor;
+
+
+   // --- 6. COMBINE + EMISSION ---
+   // Important: Lava glows in the dark. Standard lighting makes it dark in shadow.
+   // We add 'emission' so it ignores shadows.
+   vec3 emission = finalLavaColor * lavaMix * 0.8; // 0.8 is brightness
+
+   fragment_color = Ia + Id + Is + rimColor + vec4(emission, 0.0);
+  
+}

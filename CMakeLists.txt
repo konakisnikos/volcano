@@ -47,18 +47,20 @@ set(SRC
   common/camera.cpp
   common/model.cpp
   common/texture.cpp
-  common/Volcano.cpp
-  common/Skybox.cpp
+  common/light.cpp
+  elemental/elements/Volcano.cpp
+  elemental/elements/Skybox.cpp
+
 )
 
 add_executable(elemental ${SRC})
 
 # Headers & shader files (added for IDE visibility only)
 set(SHADERS
-  elemental/Volcano.vertexshader
-  elemental/Volcano.fragmentshader
-  elemental/Skybox.vertexshader
-  elemental/Skybox.fragmentshader
+  elemental/shaders/Volcano.vertexshader
+  elemental/shaders/Volcano.fragmentshader
+  elemental/shaders/Skybox.vertexshader
+  elemental/shaders/Skybox.fragmentshader
 )
 set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
 source_group("shaders" FILES ${SHADERS})
@@ -75,10 +77,10 @@ target_link_libraries(elemental PRIVATE ${ALL_LIBS})
 
 # Copy shaders to build directory for runtime
 add_custom_command(TARGET elemental POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/Volcano.vertexshader $<TARGET_FILE_DIR:elemental>
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/Volcano.fragmentshader $<TARGET_FILE_DIR:elemental>
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/Skybox.vertexshader $<TARGET_FILE_DIR:elemental>
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/Skybox.fragmentshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Volcano.vertexshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Volcano.fragmentshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Skybox.vertexshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Skybox.fragmentshader $<TARGET_FILE_DIR:elemental>
 )
 
 # Grouping for IDE organization (optional)
