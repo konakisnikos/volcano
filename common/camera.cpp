@@ -32,36 +32,7 @@ void Camera::update() {
     // Reset mouse position for next frame
     glfwSetCursorPos(window, width / 2, height / 2);
 
-    // Task 5.1: simple camera movement that moves in +-z and +-x axes
-    /*/
-    // Move forward
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
-        position -= vec3(0, 0, 1) * deltaTime * speed;
-    }
-    // Move backward
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS) {
-        position += vec3(0, 0, 1) * deltaTime * speed;
-    }
-    // Strafe right
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS) {
-        position += vec3(1, 0, 0) * deltaTime * speed;
-    }
-    // Strafe left
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS) {
-        position -= vec3(1, 0, 0) * deltaTime * speed;
-    }
-
-    // Task 5.2: update view matrix so it always looks at the origin
-    projectionMatrix = perspective(radians(FoV), 4.0f / 3.0f, 0.1f, 100.0f);
-    viewMatrix = lookAt(
-        position,
-        vec3(0, 0, 0),
-        vec3(0, 1, 0)
-    );
-    //*/
-
     // Task 5.3: Compute new horizontal and vertical angles, given windows size
-    //*/
     // and cursor position
     horizontalAngle += mouseSpeed * float(width / 2 - xPos);
     verticalAngle += mouseSpeed * float(height / 2 - yPos);

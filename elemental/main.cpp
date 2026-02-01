@@ -22,7 +22,13 @@
 #include <common/texture.h>
 #include <elemental/elements/Volcano.h>
 #include <elemental/elements/Skybox.h>
+#include <elemental/SceneDirector.h>
+#include <elemental/ParticleSystem.h>
+#include <elemental/ParticleShaderParams.h>
 #include <common/light.h>
+
+// Crack system (CPU -> shader + optional stone burst)
+#include <elemental/CrackSystem.h>
 
 using namespace std;
 using namespace glm;
@@ -40,12 +46,22 @@ void free();
 // Global variables
 GLFWwindow* window;
 Camera* camera;
-GLuint volcanoShaderProgram;
+GLuint volcanoShaderProgram, particleShaderProgram;
 GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
-GLuint terrainTextureSampler;
-GLuint terrainTexture;
+GLuint terrainTextureSampler, smokeTextureSampler;
+GLuint terrainTexture, smokeTexture;
+
+ParticleSystem* smokeSystem;
+ParticleSystem* sparksSystem;
+
+// Cache particle shader uniform locations + params (so we don't glGetUniformLocation every frame)
+static ParticleShaderUniformLocations gParticleU;
+static ParticleShaderParams gSmokeShaderParams;
+static ParticleShaderParams gSparksShaderParams;
 
 Light* moonlight;
+
+VolcanoStats stats;
 
 struct Material {
     glm::vec4 Ks, Kd, Ka;
@@ -61,11 +77,19 @@ Material volcanoMaterial = {
 
 Volcano* volcano;
 Skybox* skybox;
+SceneDirector* sceneDirector;
+
+// ------------------------------
+// Crack events (CPU -> shader)
+// ------------------------------
+static CrackSystem gCrackSystem;
+static bool gCracksCreated = false;
 
 void createContext()
 {
     // Load shaders
     volcanoShaderProgram = loadShaders("../elemental/shaders/Volcano.vertexshader", "../elemental/shaders/Volcano.fragmentshader");
+    particleShaderProgram = loadShaders("../elemental/shaders/Particle.vertexshader", "../elemental/shaders/Particle.fragmentshader");
 
     // Get uniform locations for main shader
     projectionMatrixLocation = glGetUniformLocation(volcanoShaderProgram, "P");
@@ -79,8 +103,10 @@ void createContext()
 
     // Load terrain texture
     terrainTexture = loadSOIL("/Users/nikos/Desktop/elemental/elemental/assets/Diffusemap.png");
+    
 
     terrainTextureSampler = glGetUniformLocation(volcanoShaderProgram, "uTerrainTexture");
+    
 
     glBindTexture(GL_TEXTURE_2D, terrainTexture);
 
@@ -93,6 +119,33 @@ void createContext()
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
+    smokeTexture = loadSOIL("/Users/nikos/Desktop/elemental/elemental/assets/smoke3.png");
+    smokeTextureSampler = glGetUniformLocation(particleShaderProgram, "uSmokeTexture");
+
+    // Cache particle shader uniform locations once
+    gParticleU = getParticleShaderUniformLocations(particleShaderProgram);
+
+    // Smoke defaults (match previous hardcoded values)
+    gSmokeShaderParams = ParticleShaderParams{};
+
+    // Sparks look (reusing same shader)
+    gSparksShaderParams = ParticleShaderParams{};
+    gSparksShaderParams.sizeScale = 0.95f;
+    gSparksShaderParams.wobbleAmp = 0.0f;
+    gSparksShaderParams.featherEdges = glm::vec2(1.0f, 0.10f);
+    gSparksShaderParams.densityEdges = glm::vec2(0.05f, 0.90f);
+    gSparksShaderParams.alphaDiscard = 0.008f;
+    gSparksShaderParams.rimIntensity = 0.0f;
+    gSparksShaderParams.texRgbMix = 0.0f;
+    gSparksShaderParams.densityMulAdd = glm::vec2(0.0f, 1.0f);
+
+    glBindTexture(GL_TEXTURE_2D, smokeTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
     // skybox
     std::vector<std::string> cubemapFaces = {
         "../skybox_blue/right.png",
@@ -103,6 +156,41 @@ void createContext()
         "../skybox_blue/back.png"
     };
     skybox = new Skybox(cubemapFaces);
+
+    sceneDirector = new SceneDirector(camera, moonlight, volcano, skybox);
+
+    smokeSystem = new ParticleSystem(2500);
+    sparksSystem = new ParticleSystem(200);
+
+    stats = volcano->getStats();
+
+    // Smoke config
+    ParticleEffectConfig smokeCfg;
+    smokeCfg.emitterRadius = stats.craterRadius * 0.95f;
+    smokeSystem->SetConfig(smokeCfg);
+
+    // Sparks config (uses the same simulation code, tuned to look like embers)
+    ParticleEffectConfig sparksCfg;
+    sparksCfg.spawnRate     = 20.0f;
+    sparksCfg.lifetime      = 10.5f;
+    sparksCfg.emitterRadius = stats.craterRadius * 0.75f;
+
+    sparksCfg.startColor    = glm::vec4(1.0f, 0.65f, 0.15f, 0.85f);
+
+    sparksCfg.startSizeMin  = 1.5f;
+    sparksCfg.startSizeMax  = 5.65f;
+    sparksCfg.endSizeMul    = 0.35f; // shrink over life
+
+    sparksCfg.upSpeedMin    = 18.0f;
+    sparksCfg.upSpeedMax    = 35.0f;
+
+    sparksCfg.spreadMin     = 0.2f;
+    sparksCfg.spreadMax     = 1.1f;
+
+    sparksCfg.dragPerSec    = 0.98f;
+    sparksCfg.wind          = glm::vec3(0.2f, 0.0f, 0.15f);
+
+    sparksSystem->SetConfig(sparksCfg);
 }
 
 void free()
@@ -112,10 +200,14 @@ void free()
     // Clean up allocated objects
     if (volcano) delete volcano;
     if (skybox) delete skybox;
+    if (sceneDirector) delete sceneDirector;
     if (terrainTexture) {
         glDeleteTextures(1, &terrainTexture);
         terrainTexture = 0;
     }
+    if (smokeSystem) delete smokeSystem;
+    if (sparksSystem) delete sparksSystem;
+    if (moonlight) delete moonlight;
 
     glfwTerminate();
 }
@@ -127,8 +219,23 @@ void mainLoop()
     do
     {
         double currentTime = glfwGetTime();
-        float deltaTime = float(currentTime - lastTime)/2;
+        float deltaTime = float(currentTime - lastTime);
         lastTime = currentTime;
+
+        if (sceneDirector) {
+            sceneDirector->update(currentTime, deltaTime);
+        } else if (camera) {
+            camera->update();
+        }
+        glm::vec3 emitter(stats.craterCenter.x,
+                  (stats.craterTop - stats.craterBottom)/2 + 5.0f,   // tune: 3..10
+                  stats.craterCenter.y);
+
+        // Spawn sparks from slightly lower (inside crater) than smoke
+        glm::vec3 sparksEmitter = emitter + glm::vec3(0.0f, 87.0f, 0.0f);
+
+        smokeSystem->Update(deltaTime, emitter);
+        sparksSystem->Update(deltaTime, sparksEmitter);
 
         // Update light
         moonlight->update();
@@ -136,19 +243,11 @@ void mainLoop()
         
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        // camera
-        camera->update();
-
-        cout << "Camera position: "
-             << camera->position.x << ", "
-             << camera->position.y << ", "
-             << camera->position.z << " \r";
-        cout.flush();
-
         mat4 projectionMatrix = camera->projectionMatrix;
         mat4 viewMatrix = camera->viewMatrix;
         mat4 modelMatrix = mat4(1.0);
 
+        // Draw skybox first
         if (skybox)
         {
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -170,8 +269,59 @@ void mainLoop()
         glUniform1i(terrainTextureSampler, 0);
         
         // Send time uniform
-        glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_Time"), currentTime);
+        float lavaTime = sceneDirector ? sceneDirector->getLavaTimeSeconds()
+                                       : static_cast<float>(currentTime);
+        glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_LavaTime"), lavaTime);
 
+        // Create cracks once shortly before lava starts flowing.
+        // (SceneDirector starts lava at 7 seconds, so lavaTime becomes >= 0 then.
+        // We create cracks when lavaTime becomes close to 0.)
+        if (!gCracksCreated && lavaTime > -1.0f) {
+            stats = volcano->getStats();
+
+            // Hardcoded crack seed points near the volcano base.
+            // Volcano center is approximately (0, -400) in XZ.
+            // For line cracks: set direction radially outward from the center.
+            auto radialDir = [&](const glm::vec2& p) {
+                glm::vec2 d = p - stats.craterCenter;
+                float len = glm::length(d);
+                if (len < 1e-5f) return glm::vec2(1.0f, 0.0f);
+                return d / len;
+            };
+
+            gCrackSystem.reset();
+            {
+                glm::vec2 p(-180.0f, 80.0f);
+                gCrackSystem.addCrack(stats, p, lavaTime + 0.30f, 1.4f, 80.0f, radialDir(p), 130.0f);
+            }
+            {
+                glm::vec2 p(320.0f, -240.0f);
+                gCrackSystem.addCrack(stats, p, lavaTime + 0.00f, 1.9f, 95.0f, radialDir(p), 160.0f);
+            }
+            {
+                glm::vec2 p(-200.0f, -340.0f);
+                gCrackSystem.addCrack(stats, p, lavaTime + 0.15f, 1.6f, 85.0f, radialDir(p), 140.0f);
+            }
+            {
+                glm::vec2 p(-170.0f, -180.0f);
+                gCrackSystem.addCrack(stats, p, lavaTime + 0.45f, 1.7f, 90.0f, radialDir(p), 150.0f);
+            }
+            {
+                glm::vec2 p(180.0f, -60.0f);
+                gCrackSystem.addCrack(stats, p, lavaTime + 0.60f, 1.1f, 75.0f, radialDir(p), 120.0f);
+            }
+
+            gCracksCreated = true;
+        }
+
+        // Upload crack uniforms to the volcano shader (cheap, small arrays)
+        gCrackSystem.uploadToVolcanoShader(volcanoShaderProgram);
+
+        VolcanoStats stats = volcano->getStats();
+        glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_CraterRadius"), stats.craterRadius);
+        glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_CraterBottom"), stats.craterBottom);
+        glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_CraterTop"), stats.craterTop);
+        
         moonlight->uploadLight(volcanoShaderProgram, 0);
 
         // Upload simple material properties
@@ -184,11 +334,60 @@ void mainLoop()
         // draw volcano
         volcano->Draw();
 
+        // Draw particles (smoke)
+        glUseProgram(particleShaderProgram);
+
+        applyParticleShaderParams(
+            gParticleU,
+            projectionMatrix,
+            viewMatrix,
+            glm::vec3(0.7f, 0.8f, 1.0f),
+            (float)currentTime,
+            gSmokeShaderParams
+        );
+
+        // texture
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, smokeTexture);
+        if (gParticleU.smokeTexture != -1) glUniform1i(gParticleU.smokeTexture, 0);
+
+        // blending/depth for smoke
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+
+        smokeSystem->Draw(particleShaderProgram);
+
+        // Draw particles (sparks)
+        applyParticleShaderParams(
+            gParticleU,
+            projectionMatrix,
+            viewMatrix,
+            glm::vec3(0.0f), // no moon rim contribution for sparks
+            (float)currentTime,
+            gSparksShaderParams
+        );
+
+        // keep same texture as a mask
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, smokeTexture);
+        if (gParticleU.smokeTexture != -1) glUniform1i(gParticleU.smokeTexture, 0);
+
+        // additive blending for sparks
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+        sparksSystem->Draw(particleShaderProgram);
+
+        // IMPORTANT: restore default blending state so the rest of the frame doesn't get brightened
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        glDepthMask(GL_TRUE);
+
         glfwSwapBuffers(window);
 
         glfwPollEvents();
     } while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS &&
-        glfwWindowShouldClose(window) == 0);
+             glfwWindowShouldClose(window) == 0);
 }
 
 void initialize()

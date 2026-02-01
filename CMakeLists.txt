@@ -49,7 +49,11 @@ set(SRC
   common/texture.cpp
   common/light.cpp
   elemental/elements/Volcano.cpp
+  elemental/elements/VolcanoNoise.cpp
   elemental/elements/Skybox.cpp
+  elemental/SceneDirector.cpp
+  elemental/ParticleSystem.cpp
+  elemental/CrackSystem.cpp
 
 )
 
@@ -61,6 +65,8 @@ set(SHADERS
   elemental/shaders/Volcano.fragmentshader
   elemental/shaders/Skybox.vertexshader
   elemental/shaders/Skybox.fragmentshader
+  elemental/shaders/Particle.vertexshader
+  elemental/shaders/Particle.fragmentshader
 )
 set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
 source_group("shaders" FILES ${SHADERS})

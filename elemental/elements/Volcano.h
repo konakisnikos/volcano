@@ -3,9 +3,7 @@
 
 #include <vector>
 #include <string>
-#include <GL/glew.h>
 #include <glm/glm.hpp>
-#include "common/shader.h"
 #include "common/model.h"
 
 
@@ -52,15 +50,10 @@ private:
     std::vector<float>     m_riverMasks;
     std::vector<float>     m_distFromCenter;
 
-    GLuint m_riverMaskBuffer;
-    GLuint m_distBuffer;
     
-    
-    void setupExtraAttributes();
     void generateGeometry(); //creates vertices and indices
     void calculateNormals(); //for lighting
     void loadHeightMap(const std::string& path); //optional heightmap loading
-    void useHeightMap(); //applies heightmap to m_positions
 };
 
 #endif // VOLCANO_H

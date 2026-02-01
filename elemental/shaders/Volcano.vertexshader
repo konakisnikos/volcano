@@ -15,6 +15,7 @@ uniform mat4 M;
 uniform mat4 V;
 uniform mat4 P;
 uniform vec3 light_position_worldspace; 
+uniform float u_LavaTime;
 
 // OUTPUTS to Fragment Shader
 out vec4 vertex_position_cameraspace;
@@ -27,11 +28,25 @@ out float vRiverMask;
 out float vDist;
 // -------------------------------------------------------
 
-void main() {
-    
-    gl_Position =  P * V * M * vec4(vertexPosition_modelspace, 1);
+out vec3 vWorldPos;
 
-    vertex_position_cameraspace = V * M * vec4(vertexPosition_modelspace, 1);
+void main() {
+    float speed = 20.0;
+    float flowHead = u_LavaTime * speed;
+    float flowMask = 1.0 - smoothstep(flowHead, flowHead + 10.0, inDist);
+    float riverBedMask = smoothstep(0.55, 0.9, inRiverMask);
+    float lavaPresence = riverBedMask * flowMask;
+    float liftMask = smoothstep(0.15, 0.85, lavaPresence);
+    float liftAmount = 0.35 * liftMask;
+
+    vec3 displacedPosition = vertexPosition_modelspace + vec3(0.0, liftAmount, 0.0);
+
+    vec4 worldPos4 = M * vec4(displacedPosition, 1.0);
+    vWorldPos = worldPos4.xyz;
+
+    gl_Position =  P * V * M * vec4(displacedPosition, 1);
+
+    vertex_position_cameraspace = V * M * vec4(displacedPosition, 1);
     vertex_normal_cameraspace = V * M * vec4(vertexNormal_modelspace, 0);
     light_position_cameraspace = V * vec4(light_position_worldspace, 1.0); 
 

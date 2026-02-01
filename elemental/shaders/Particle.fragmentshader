@@ -1,0 +1,78 @@
+#version 330 core
+
+in vec2 TexCoords;
+in vec4 ParticleColor;
+in float Rot;
+
+out vec4 FragColor;
+
+uniform sampler2D uSmokeTexture;
+uniform vec3 moonColor;
+uniform float uTime;
+
+// NEW: effect knobs
+uniform float uWobbleAmp;         // smoke: 0.008  | sparks: 0.0
+uniform vec2  uWobbleTimeFreq;    // smoke: (1.2, 1.0)
+uniform float uWobbleUVFreq;      // smoke: 7.0
+
+uniform vec2  uFeatherEdges;      // smoke: (1.0, 0.55)
+uniform vec2  uDensityEdges;      // smoke: (0.01, 0.75)
+uniform float uAlphaDiscard;      // smoke: 0.002
+
+uniform vec2  uRimEdges;          // smoke: (0.25, 0.95)
+uniform float uRimIntensity;      // smoke: 0.12
+
+uniform float uTexRgbMix;         // smoke: 0.55
+uniform vec2  uDensityMulAdd;     // smoke: (0.15, 0.85) => col *= (add + mul*density)
+
+void main() {
+    // --- rotate UV around center ---
+    vec2 uv = TexCoords - vec2(0.5);
+    float s = sin(Rot);
+    float c = cos(Rot);
+    uv = vec2(c * uv.x - s * uv.y, s * uv.x + c * uv.y);
+    uv += vec2(0.5);
+
+    // --- subtle internal motion (wobble) ---
+    vec2 wobble = vec2(
+        sin(uTime * uWobbleTimeFreq.x + Rot + uv.y * uWobbleUVFreq),
+        cos(uTime * uWobbleTimeFreq.y - Rot + uv.x * uWobbleUVFreq)
+    ) * uWobbleAmp;
+    uv = clamp(uv + wobble, 0.0, 1.0);
+
+    // Radial feather mask: 1 in center -> 0 at edges (hides quad shape)
+    vec2 d = uv - vec2(0.5);
+    float r = length(d) / 0.70710678;            // normalize (0..1)
+    float feather = smoothstep(uFeatherEdges.x, uFeatherEdges.y, r);
+
+    vec4 tex = texture(uSmokeTexture, uv);
+
+    // Density: prefer alpha if present, otherwise luminance
+    float density = max(tex.a, dot(tex.rgb, vec3(0.333333)));
+
+    // Softer shaping (less chunky)
+    density = smoothstep(uDensityEdges.x, uDensityEdges.y, density);
+
+    float alpha = ParticleColor.a * density;
+    alpha *= feather;
+
+    // Lower cutoff so we don't "square off" the edges
+    if (alpha < uAlphaDiscard) discard;
+
+    // Rim on edges only (keep subtle, otherwise it becomes white smoke)
+    float rim = smoothstep(uRimEdges.x, uRimEdges.y, 1.0 - density);
+
+    // IMPORTANT: Use texture RGB to keep smoke dark (volcanic)
+    vec3 texRGB = tex.rgb;
+
+    // Base smoke = particle color darkened by texture
+    vec3 base = ParticleColor.rgb * mix(vec3(1.0), texRGB, uTexRgbMix);
+
+    // Add a *small* moon rim light
+    vec3 col = base + moonColor * (uRimIntensity * rim);
+
+    // Very slight brightening in denser regions (keeps it puffy but not white)
+    col *= (uDensityMulAdd.y + uDensityMulAdd.x * density);
+
+    FragColor = vec4(col, alpha);
+}

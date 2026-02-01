@@ -1,120 +1,180 @@
 #version 330 core
 
-// INPUTS from Vertex Shader
 in vec4 vertex_position_cameraspace;
 in vec4 vertex_normal_cameraspace;
 in vec2 vTexCoord;
 
-// --- NEW INPUTS (From your fixed Vertex Shader) ---
-in float vRiverMask; // 1.0 = River, 0.0 = Rock
-in float vDist;      // Distance from top
-// --------------------------------------------------
+in float vRiverMask;
+in float vDist;
+
+// REMOVE: in float vModelY;  (doesn't exist)
+in vec3 vWorldPos;
 
 out vec4 fragment_color;
 
-// TEXTURES
-uniform sampler2D uTerrainTexture; 
-
-// UNIFORMS
-uniform float u_Time; // <--- YOU MUST SEND THIS FROM C++ (glfwGetTime)
+uniform sampler2D uTerrainTexture;
+uniform float u_LavaTime;
 
 struct Light {
-    vec4 La; 
-    vec4 Ld; 
-    vec4 Ls; 
+    vec4 La;
+    vec4 Ld;
+    vec4 Ls;
     vec3 lightPosition_worldspace;
 };
-uniform Light light[2]; 
+uniform Light light[2];
 
-// Material properties
-uniform vec4 Ka; 
-uniform vec4 Ks; 
-uniform float Ns; 
+uniform vec4 Ka;
+uniform vec4 Ks;
+uniform float Ns;
 
-void main()
-{
-   // --- 1. BASE COLOR (ROCK) ---
+// NEW: crack controls (keep small count)
+#define MAX_CRACKS 8
+uniform int  uCrackCount;
+uniform vec2 uCrackPosXZ[MAX_CRACKS];
+uniform float uCrackStartTime[MAX_CRACKS];
+uniform float uCrackWidth[MAX_CRACKS];
+uniform float uCrackRadius[MAX_CRACKS];   // how far the effect extends
+
+// NEW: line crack controls
+uniform vec2 uCrackDirXZ[MAX_CRACKS];     // normalized direction in XZ
+uniform float uCrackHalfLen[MAX_CRACKS];  // half length of the segment
+
+// Signed distance from point p to segment [a,b]
+float sdSegment(vec2 p, vec2 a, vec2 b) {
+    vec2 pa = p - a;
+    vec2 ba = b - a;
+    float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+    return length(pa - ba * h);
+}
+
+// Small hash/noise helpers for crack jitter (deterministic)
+float hash12(vec2 p) {
+    // simple value noise hash
+    vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+    p3 += dot(p3, p3.yzx + 33.33);
+    return fract((p3.x + p3.y) * p3.z);
+}
+
+float noise1D(float x) {
+    float i = floor(x);
+    float f = fract(x);
+    float a = hash12(vec2(i, 17.0));
+    float b = hash12(vec2(i + 1.0, 17.0));
+    float u = f * f * (3.0 - 2.0 * f);
+    return mix(a, b, u);
+}
+
+float crackMaskAt(vec2 xz, int i, float tNow) {
+    float t = clamp((tNow - uCrackStartTime[i]) / 1.2, 0.0, 1.0); // 1.2s "break open"
+
+    vec2 dir = normalize(uCrackDirXZ[i]);
+    vec2 nrm = vec2(-dir.y, dir.x); // perpendicular
+
+    // Build segment endpoints
+    vec2 a = uCrackPosXZ[i] - dir * uCrackHalfLen[i];
+    vec2 b = uCrackPosXZ[i] + dir * uCrackHalfLen[i];
+
+    // --- NEW: warp along the crack to make it jagged (not perfectly straight) ---
+    // Parameter along the crack (use projection on direction)
+    float s = dot(xz - uCrackPosXZ[i], dir);
+
+    // Deterministic per-crack seed from position
+    float seed = hash12(uCrackPosXZ[i] * 0.013 + float(i) * 11.7);
+
+    // Multi-octave 1D noise along s (controls sideways offset)
+    float n = 0.0;
+    float freq = 0.04;
+    float amp = 1.0;
+    for (int o = 0; o < 4; ++o) {
+        n += (noise1D(s * freq + seed * 100.0) * 2.0 - 1.0) * amp;
+        freq *= 2.0;
+        amp *= 0.55;
+    }
+
+    // Sideways offset magnitude (world units)
+    float warpAmp = 5.0 + 8.0 * seed; // 10..18
+
+    // Warp the evaluation point sideways (gives a wiggly crack)
+    vec2 xzWarped = xz + nrm * (n * warpAmp);
+
+    // Distance to fissure line segment with warped point
+    float dLine = sdSegment(xzWarped, a, b);
+
+    // Gate by overall influence radius around the crack center (unwarped)
+    float dCenter = length(xz - uCrackPosXZ[i]);
+
+    float line = 1.0 - smoothstep(uCrackWidth[i], uCrackWidth[i] * 2.5, dLine);
+    float gate = 1.0 - smoothstep(uCrackRadius[i], uCrackRadius[i] * 1.1, dCenter);
+
+    return line * gate * t;
+}
+
+void main() {
    float maskValue = texture(uTerrainTexture, vTexCoord).r;
-   vec3 darkRock = vec3(0.1, 0.12, 0.15); 
-   vec3 lightRock = vec3(0.3, 0.35, 0.4); 
+   vec3 darkRock = vec3(0.1, 0.12, 0.15);
+   vec3 lightRock = vec3(0.3, 0.35, 0.4);
    vec3 mixedRockColor = mix(darkRock, lightRock, maskValue);
 
-   // --- 2. LAVA LOGIC (THE NEW PART) ---
-   
-   // A. Calculate Flow
-   float speed = 20.0; // How fast lava moves down units/sec
-   float flowHead = u_Time * speed; 
-   
-   // Create a mask: 1.0 if lava has reached this point, 0.0 if not.
-   // smoothstep makes the leading edge soft instead of a hard line.
+   // Existing river lava
+   float speed = 20.0;
+   float flowHead = u_LavaTime * speed;
    float flowMask = 1.0 - smoothstep(flowHead, flowHead + 10.0, vDist);
-   
-   // B. Combine River Shape + Flow Animation
-   float currentLavaPresence = vRiverMask * flowMask;
-   float lavaMix = smoothstep(0.1, 0.5, currentLavaPresence); // Soften edges
+   float riverBedMask = smoothstep(0.55, 0.9, vRiverMask);
+   float currentLavaPresence = riverBedMask * flowMask;
+   float lavaMixRiver = smoothstep(0.1, 0.5, currentLavaPresence);
 
-   // C. Lava Color
-   // Make center of river brighter (vRiverMask is higher in center)
-   vec3 lavaBase = vec3(1.0, 0.4, 0.0); // Orange
-   vec3 lavaHot  = vec3(1.0, 0.9, 0.2); // Yellow/White
-   vec3 finalLavaColor = mix(lavaBase, lavaHot, vRiverMask);
+   // NEW: crack lava
+   vec2 xz = vWorldPos.xz;
+   float crack = 0.0;
+   for (int i = 0; i < uCrackCount; ++i) {
+       crack = max(crack, crackMaskAt(xz, i, u_LavaTime));
+   }
+   float lavaMixCrack = smoothstep(0.2, 0.8, crack);
 
-   // D. Create the Final Material Color
-   // If lavaMix is 1.0, use Lava. If 0.0, use Rock.
+   float lavaMix = clamp(max(lavaMixRiver, lavaMixCrack), 0.0, 1.0);
+
+   vec3 lavaBase = vec3(1.0, 0.4, 0.0);
+   vec3 lavaHot  = vec3(1.0, 0.9, 0.2);
+
+   // For cracks, we can make it hotter in the center
+   vec3 finalLavaColor = mix(lavaBase, lavaHot, max(riverBedMask, lavaMixCrack));
+
    vec3 finalAlbedo = mix(mixedRockColor, finalLavaColor, lavaMix);
    vec4 materialKd = vec4(finalAlbedo, 1.0);
 
-
-   // --- 3. BUMP MAPPING (DETAIL) ---
-   float offset = 1.0 / 1024.0; 
+   // bump (reduce on lava)
+   float offset = 1.0 / 1024.0;
    float hCenter = texture(uTerrainTexture, vTexCoord).r;
    float hRight  = texture(uTerrainTexture, vTexCoord + vec2(offset, 0.0)).r;
    float hTop    = texture(uTerrainTexture, vTexCoord + vec2(0.0, offset)).r;
 
-   // Tip: Reduce bumpiness where lava is (lava is liquid, so it's smoother)
-   float bumpStrength = 5.0 * (1.0 - lavaMix); 
-
-   float dX = (hCenter - hRight) * bumpStrength; 
+   float bumpStrength = 5.0 * (1.0 - lavaMix);
+   float dX = (hCenter - hRight) * bumpStrength;
    float dY = (hCenter - hTop)   * bumpStrength;
 
    vec3 baseNormal = normalize(vertex_normal_cameraspace.xyz);
-   vec3 bumpNormal = normalize(baseNormal + vec3(dX, dY, 0.0)); 
+   vec3 bumpNormal = normalize(baseNormal + vec3(dX, dY, 0.0));
    vec4 N = vec4(bumpNormal, 0.0);
 
-
-   // --- 4. LIGHTING ---
-   vec4 E = normalize(vec4(0, 0, 0, 1) - vertex_position_cameraspace); 
+   // lighting
+   vec4 E = normalize(vec4(0, 0, 0, 1) - vertex_position_cameraspace);
    vec3 lightDir3 = normalize(light[0].lightPosition_worldspace);
-   vec4 L = vec4(lightDir3, 0.0); 
+   vec4 L = vec4(lightDir3, 0.0);
 
-   // Ambient
    vec4 Ia = light[0].La * Ka;
-
-   // Diffuse (Using our mixed Rock/Lava color)
    float cosTheta = clamp(dot(N, L), 0, 1);
    vec4 Id = light[0].Ld * materialKd * cosTheta;
 
-   // Specular
    vec4 R = reflect(-L, N);
    float cosAlpha = clamp(dot(E, R), 0, 1);
    float specular_factor = pow(cosAlpha, Ns);
-   
-   // Reduce specular on rock, keep it on lava (liquid is shiny)
-   float liquidSpec = max(specular_factor, lavaMix * 2.0); 
    vec4 Is = light[0].Ls * Ks * specular_factor;
 
-
-   // --- 5. RIM LIGHT ---
    float rimFactor = 1.0 - max(dot(E, N), 0.0);
-   rimFactor = pow(rimFactor, 3.0); 
+   rimFactor = pow(rimFactor, 3.0);
    vec4 rimColor = light[0].Ld * 1.5 * rimFactor;
 
-
-   // --- 6. COMBINE + EMISSION ---
-   // Important: Lava glows in the dark. Standard lighting makes it dark in shadow.
-   // We add 'emission' so it ignores shadows.
-   vec3 emission = finalLavaColor * lavaMix * 0.8; // 0.8 is brightness
+   vec3 emission = finalLavaColor * lavaMix * 0.8;
 
    fragment_color = Ia + Id + Is + rimColor + vec4(emission, 0.0);
-  
 }
