@@ -23,8 +23,6 @@
 #include <elemental/elements/Volcano.h>
 #include <elemental/elements/Skybox.h>
 #include <elemental/SceneDirector.h>
-#include <elemental/ParticleSystem.h>
-#include <elemental/ParticleShaderParams.h>
 #include <common/light.h>
 
 // Crack system (CPU -> shader + optional stone burst)
@@ -46,18 +44,10 @@ void free();
 // Global variables
 GLFWwindow* window;
 Camera* camera;
-GLuint volcanoShaderProgram, particleShaderProgram;
+GLuint volcanoShaderProgram;
 GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
-GLuint terrainTextureSampler, smokeTextureSampler;
-GLuint terrainTexture, smokeTexture;
-
-ParticleSystem* smokeSystem;
-ParticleSystem* sparksSystem;
-
-// Cache particle shader uniform locations + params (so we don't glGetUniformLocation every frame)
-static ParticleShaderUniformLocations gParticleU;
-static ParticleShaderParams gSmokeShaderParams;
-static ParticleShaderParams gSparksShaderParams;
+GLuint terrainTextureSampler;
+GLuint terrainTexture;
 
 Light* moonlight;
 
@@ -89,7 +79,6 @@ void createContext()
 {
     // Load shaders
     volcanoShaderProgram = loadShaders("../elemental/shaders/Volcano.vertexshader", "../elemental/shaders/Volcano.fragmentshader");
-    particleShaderProgram = loadShaders("../elemental/shaders/Particle.vertexshader", "../elemental/shaders/Particle.fragmentshader");
 
     // Get uniform locations for main shader
     projectionMatrixLocation = glGetUniformLocation(volcanoShaderProgram, "P");
@@ -119,33 +108,6 @@ void createContext()
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    smokeTexture = loadSOIL("/Users/nikos/Desktop/elemental/elemental/assets/smoke3.png");
-    smokeTextureSampler = glGetUniformLocation(particleShaderProgram, "uSmokeTexture");
-
-    // Cache particle shader uniform locations once
-    gParticleU = getParticleShaderUniformLocations(particleShaderProgram);
-
-    // Smoke defaults (match previous hardcoded values)
-    gSmokeShaderParams = ParticleShaderParams{};
-
-    // Sparks look (reusing same shader)
-    gSparksShaderParams = ParticleShaderParams{};
-    gSparksShaderParams.sizeScale = 0.95f;
-    gSparksShaderParams.wobbleAmp = 0.0f;
-    gSparksShaderParams.featherEdges = glm::vec2(1.0f, 0.10f);
-    gSparksShaderParams.densityEdges = glm::vec2(0.05f, 0.90f);
-    gSparksShaderParams.alphaDiscard = 0.008f;
-    gSparksShaderParams.rimIntensity = 0.0f;
-    gSparksShaderParams.texRgbMix = 0.0f;
-    gSparksShaderParams.densityMulAdd = glm::vec2(0.0f, 1.0f);
-
-    glBindTexture(GL_TEXTURE_2D, smokeTexture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glBindTexture(GL_TEXTURE_2D, 0);
-
     // skybox
     std::vector<std::string> cubemapFaces = {
         "../skybox_blue/right.png",
@@ -158,39 +120,6 @@ void createContext()
     skybox = new Skybox(cubemapFaces);
 
     sceneDirector = new SceneDirector(camera, moonlight, volcano, skybox);
-
-    smokeSystem = new ParticleSystem(2500);
-    sparksSystem = new ParticleSystem(200);
-
-    stats = volcano->getStats();
-
-    // Smoke config
-    ParticleEffectConfig smokeCfg;
-    smokeCfg.emitterRadius = stats.craterRadius * 0.95f;
-    smokeSystem->SetConfig(smokeCfg);
-
-    // Sparks config (uses the same simulation code, tuned to look like embers)
-    ParticleEffectConfig sparksCfg;
-    sparksCfg.spawnRate     = 20.0f;
-    sparksCfg.lifetime      = 10.5f;
-    sparksCfg.emitterRadius = stats.craterRadius * 0.75f;
-
-    sparksCfg.startColor    = glm::vec4(1.0f, 0.65f, 0.15f, 0.85f);
-
-    sparksCfg.startSizeMin  = 1.5f;
-    sparksCfg.startSizeMax  = 5.65f;
-    sparksCfg.endSizeMul    = 0.35f; // shrink over life
-
-    sparksCfg.upSpeedMin    = 18.0f;
-    sparksCfg.upSpeedMax    = 35.0f;
-
-    sparksCfg.spreadMin     = 0.2f;
-    sparksCfg.spreadMax     = 1.1f;
-
-    sparksCfg.dragPerSec    = 0.98f;
-    sparksCfg.wind          = glm::vec3(0.2f, 0.0f, 0.15f);
-
-    sparksSystem->SetConfig(sparksCfg);
 }
 
 void free()
@@ -205,8 +134,6 @@ void free()
         glDeleteTextures(1, &terrainTexture);
         terrainTexture = 0;
     }
-    if (smokeSystem) delete smokeSystem;
-    if (sparksSystem) delete sparksSystem;
     if (moonlight) delete moonlight;
 
     glfwTerminate();
@@ -227,15 +154,6 @@ void mainLoop()
         } else if (camera) {
             camera->update();
         }
-        glm::vec3 emitter(stats.craterCenter.x,
-                  (stats.craterTop - stats.craterBottom)/2 + 5.0f,   // tune: 3..10
-                  stats.craterCenter.y);
-
-        // Spawn sparks from slightly lower (inside crater) than smoke
-        glm::vec3 sparksEmitter = emitter + glm::vec3(0.0f, 87.0f, 0.0f);
-
-        smokeSystem->Update(deltaTime, emitter);
-        sparksSystem->Update(deltaTime, sparksEmitter);
 
         // Update light
         moonlight->update();
@@ -333,53 +251,6 @@ void mainLoop()
 
         // draw volcano
         volcano->Draw();
-
-        // Draw particles (smoke)
-        glUseProgram(particleShaderProgram);
-
-        applyParticleShaderParams(
-            gParticleU,
-            projectionMatrix,
-            viewMatrix,
-            glm::vec3(0.7f, 0.8f, 1.0f),
-            (float)currentTime,
-            gSmokeShaderParams
-        );
-
-        // texture
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, smokeTexture);
-        if (gParticleU.smokeTexture != -1) glUniform1i(gParticleU.smokeTexture, 0);
-
-        // blending/depth for smoke
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthMask(GL_FALSE);
-
-        smokeSystem->Draw(particleShaderProgram);
-
-        // Draw particles (sparks)
-        applyParticleShaderParams(
-            gParticleU,
-            projectionMatrix,
-            viewMatrix,
-            glm::vec3(0.0f), // no moon rim contribution for sparks
-            (float)currentTime,
-            gSparksShaderParams
-        );
-
-        // keep same texture as a mask
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, smokeTexture);
-        if (gParticleU.smokeTexture != -1) glUniform1i(gParticleU.smokeTexture, 0);
-
-        // additive blending for sparks
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-
-        sparksSystem->Draw(particleShaderProgram);
-
-        // IMPORTANT: restore default blending state so the rest of the frame doesn't get brightened
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         glDepthMask(GL_TRUE);
 

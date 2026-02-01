@@ -4,14 +4,11 @@
 #include <glm/glm.hpp>
 #include <GL/glew.h>
 
-class ParticleSystem;
-struct ParticleEffectConfig;
 struct VolcanoStats;
 
 // Small CPU-side crack event system that:
 // 1) Chooses a few crack seed points near the volcano.
 // 2) Uploads crack parameters to the Volcano shader as uniforms.
-// 3) Optionally triggers a one-frame "stone burst" in a ParticleSystem.
 class CrackSystem {
 public:
     struct CrackEvent {
