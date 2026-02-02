@@ -8,6 +8,8 @@ set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(ELEMENTAL_ENABLE_IMGUI "Enable Dear ImGui overlay" ON)
+
 find_package(OpenGL REQUIRED)
 
 # Prevent in-source builds
@@ -17,6 +19,35 @@ endif()
 
 # External dependencies
 add_subdirectory(external)
+
+###############################################################################
+# Dear ImGui (optional)
+if (ELEMENTAL_ENABLE_IMGUI)
+  include(FetchContent)
+  FetchContent_Declare(
+    imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.91.5
+  )
+  FetchContent_MakeAvailable(imgui)
+
+  add_library(imgui_lib
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/imgui_demo.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+  )
+  target_include_directories(imgui_lib PUBLIC
+    ${imgui_SOURCE_DIR}
+    ${imgui_SOURCE_DIR}/backends
+    ${CMAKE_SOURCE_DIR}/external/glew-1.13.0/include
+  )
+  target_link_libraries(imgui_lib PUBLIC glfw OpenGL::GL)
+  target_compile_definitions(imgui_lib PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLEW)
+endif()
 
 # Include directories (use target_include_directories later, keep variable for brevity)
 set(PROJECT_INCLUDE_DIRS
@@ -53,10 +84,28 @@ set(SRC
   elemental/elements/Skybox.cpp
   elemental/SceneDirector.cpp
   elemental/CrackSystem.cpp
+  elemental/IntParticleEmitter.cpp
+  elemental/elements/SmokeEmitter.cpp
 
 )
 
-add_executable(elemental ${SRC})
+set(HDR
+  common/util.h
+  common/shader.h
+  common/camera.h
+  common/model.h
+  common/texture.h
+  common/light.h
+  elemental/CrackSystem.h
+  elemental/SceneDirector.h
+  elemental/elements/Skybox.h
+  elemental/elements/Volcano.h
+  elemental/elements/VolcanoNoise.h
+  elemental/IntParticleEmitter.h
+  elemental/elements/SmokeEmitter.h
+)
+
+
 
 # Headers & shader files (added for IDE visibility only)
 set(SHADERS
@@ -64,9 +113,15 @@ set(SHADERS
   elemental/shaders/Volcano.fragmentshader
   elemental/shaders/Skybox.vertexshader
   elemental/shaders/Skybox.fragmentshader
+  elemental/shaders/ParticleShader.vertexshader
+  elemental/shaders/ParticleShader.fragmentshader
 )
+add_executable(elemental ${SRC} ${HDR} ${SHADERS})
+
 set_source_files_properties(${SHADERS} PROPERTIES HEADER_FILE_ONLY TRUE)
 source_group("shaders" FILES ${SHADERS})
+
+source_group("Header Files" FILES ${HDR})
 
 # Include & definitions
 target_include_directories(elemental PRIVATE ${PROJECT_INCLUDE_DIRS})
@@ -78,12 +133,19 @@ target_compile_definitions(elemental PRIVATE
 # Link libraries
 target_link_libraries(elemental PRIVATE ${ALL_LIBS})
 
+if (ELEMENTAL_ENABLE_IMGUI)
+  target_link_libraries(elemental PRIVATE imgui_lib)
+  target_compile_definitions(elemental PRIVATE ELEMENTAL_ENABLE_IMGUI=1)
+endif()
+
 # Copy shaders to build directory for runtime
 add_custom_command(TARGET elemental POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Volcano.vertexshader $<TARGET_FILE_DIR:elemental>
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Volcano.fragmentshader $<TARGET_FILE_DIR:elemental>
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Skybox.vertexshader $<TARGET_FILE_DIR:elemental>
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Skybox.fragmentshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/ParticleShader.vertexshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/ParticleShader.fragmentshader $<TARGET_FILE_DIR:elemental>
 )
 
 # Grouping for IDE organization (optional)

@@ -24,6 +24,13 @@
 #include <elemental/elements/Skybox.h>
 #include <elemental/SceneDirector.h>
 #include <common/light.h>
+#include <elemental/elements/SmokeEmitter.h>
+
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_opengl3.h>
+#endif
 
 // Crack system (CPU -> shader + optional stone burst)
 #include <elemental/CrackSystem.h>
@@ -48,6 +55,18 @@ GLuint volcanoShaderProgram;
 GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
 GLuint terrainTextureSampler;
 GLuint terrainTexture;
+
+// Particle shader + smoke resources
+GLuint particleShaderProgram;
+GLuint particlePVLocation;
+GLuint particleTextureSampler;
+GLuint smokeTexture;
+Drawable* smokeQuad;
+SmokeEmitter* smokeEmitter;
+
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+static bool gShowImGuiDemo = false;
+#endif
 
 Light* moonlight;
 
@@ -79,23 +98,29 @@ void createContext()
 {
     // Load shaders
     volcanoShaderProgram = loadShaders("../elemental/shaders/Volcano.vertexshader", "../elemental/shaders/Volcano.fragmentshader");
+    particleShaderProgram = loadShaders("../elemental/shaders/ParticleShader.vertexshader", "../elemental/shaders/ParticleShader.fragmentshader");
 
     // Get uniform locations for main shader
     projectionMatrixLocation = glGetUniformLocation(volcanoShaderProgram, "P");
     viewMatrixLocation = glGetUniformLocation(volcanoShaderProgram, "V");
     modelMatrixLocation = glGetUniformLocation(volcanoShaderProgram, "M");
 
+    // Particle shader uniforms
+    particlePVLocation = glGetUniformLocation(particleShaderProgram, "PV");
+    particleTextureSampler = glGetUniformLocation(particleShaderProgram, "texture0");
+
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     // Create volcano
     volcano = new Volcano(512, 1350.0f, 20.0f, glm::vec2(0.0f, -400.0f));
+    stats = volcano->getStats();
 
     // Load terrain texture
     terrainTexture = loadSOIL("/Users/nikos/Desktop/elemental/elemental/assets/Diffusemap.png");
-    
+
 
     terrainTextureSampler = glGetUniformLocation(volcanoShaderProgram, "uTerrainTexture");
-    
+
 
     glBindTexture(GL_TEXTURE_2D, terrainTexture);
 
@@ -104,7 +129,7 @@ void createContext()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glGenerateMipmap(GL_TEXTURE_2D); 
+    glGenerateMipmap(GL_TEXTURE_2D);
 
     glBindTexture(GL_TEXTURE_2D, 0);
 
@@ -120,21 +145,40 @@ void createContext()
     skybox = new Skybox(cubemapFaces);
 
     sceneDirector = new SceneDirector(camera, moonlight, volcano, skybox);
+
+    // Smoke: spawn at crater and start emitting after the shake window ends (lava starts)
+    smokeQuad = new Drawable("../elemental/assets/sphere1.obj");
+    smokeTexture = loadSOIL("../elemental/assets/smoke3.png");
+    glm::vec3 craterPos(stats.craterCenter.x, stats.craterTop - 132.0f, stats.craterCenter.y);
+    smokeEmitter = new SmokeEmitter(smokeQuad, 10000, craterPos);
 }
 
 void free()
 {
     glDeleteProgram(volcanoShaderProgram);
+    glDeleteProgram(particleShaderProgram);
 
     // Clean up allocated objects
     if (volcano) delete volcano;
     if (skybox) delete skybox;
     if (sceneDirector) delete sceneDirector;
+    if (smokeEmitter) delete smokeEmitter;
+    if (smokeQuad) delete smokeQuad;
+    if (smokeTexture) {
+        glDeleteTextures(1, &smokeTexture);
+        smokeTexture = 0;
+    }
     if (terrainTexture) {
         glDeleteTextures(1, &terrainTexture);
         terrainTexture = 0;
     }
     if (moonlight) delete moonlight;
+
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplGlfw_Shutdown();
+    ImGui::DestroyContext();
+#endif
 
     glfwTerminate();
 }
@@ -149,16 +193,30 @@ void mainLoop()
         float deltaTime = float(currentTime - lastTime);
         lastTime = currentTime;
 
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplGlfw_NewFrame();
+        ImGui::NewFrame();
+#endif
+
         if (sceneDirector) {
             sceneDirector->update(currentTime, deltaTime);
         } else if (camera) {
             camera->update();
         }
 
+        // Smoke should start after camera trembling ends.
+        // SceneDirector defines lavaTimeSeconds >= 0 at m_lavaStartSeconds (end of shake).
+        float lavaTimeForSmoke = sceneDirector ? sceneDirector->getLavaTimeSeconds()
+                                               : static_cast<float>(currentTime);
+        if (smokeEmitter && sceneDirector && lavaTimeForSmoke >= 0.0f) {
+            smokeEmitter->updateParticles(static_cast<float>(currentTime), deltaTime, camera->position);
+        }
+
         // Update light
         moonlight->update();
-        
-        
+
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         mat4 projectionMatrix = camera->projectionMatrix;
@@ -185,7 +243,7 @@ void mainLoop()
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, terrainTexture);
         glUniform1i(terrainTextureSampler, 0);
-        
+
         // Send time uniform
         float lavaTime = sceneDirector ? sceneDirector->getLavaTimeSeconds()
                                        : static_cast<float>(currentTime);
@@ -239,18 +297,53 @@ void mainLoop()
         glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_CraterRadius"), stats.craterRadius);
         glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_CraterBottom"), stats.craterBottom);
         glUniform1f(glGetUniformLocation(volcanoShaderProgram, "u_CraterTop"), stats.craterTop);
-        
+
         moonlight->uploadLight(volcanoShaderProgram, 0);
 
         // Upload simple material properties
-        glUniform4f(glGetUniformLocation(volcanoShaderProgram, "Ka"), 
+        glUniform4f(glGetUniformLocation(volcanoShaderProgram, "Ka"),
                     volcanoMaterial.Ka.r, volcanoMaterial.Ka.g, volcanoMaterial.Ka.b, volcanoMaterial.Ka.a);
-        glUniform4f(glGetUniformLocation(volcanoShaderProgram, "Ks"), 
+        glUniform4f(glGetUniformLocation(volcanoShaderProgram, "Ks"),
                     volcanoMaterial.Ks.r, volcanoMaterial.Ks.g, volcanoMaterial.Ks.b, volcanoMaterial.Ks.a);
         glUniform1f(glGetUniformLocation(volcanoShaderProgram, "Ns"), volcanoMaterial.Ns);
 
         // draw volcano
         volcano->Draw();
+
+        // Draw smoke last (transparent)
+        if (smokeEmitter && sceneDirector && lavaTimeForSmoke >= 0.0f) {
+            glDepthMask(GL_FALSE);
+
+            glUseProgram(particleShaderProgram);
+            mat4 PV = projectionMatrix * viewMatrix;
+            glUniformMatrix4fv(particlePVLocation, 1, GL_FALSE, &PV[0][0]);
+
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, smokeTexture);
+            glUniform1i(particleTextureSampler, 0);
+
+            smokeEmitter->renderParticles();
+
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glDepthMask(GL_TRUE);
+        }
+
+        #if defined(ELEMENTAL_ENABLE_IMGUI)
+            ImGui::Begin("Elemental");
+            ImGui::Checkbox("Show ImGui Demo", &gShowImGuiDemo);
+            ImGui::Text("Lava time: %.2f", lavaTime);
+            ImGui::Text("Camera pos: (%.1f, %.1f, %.1f)", camera->position.x, camera->position.y, camera->position.z);
+
+
+
+
+
+            ImGui::End();
+            if (gShowImGuiDemo) ImGui::ShowDemoWindow(&gShowImGuiDemo);
+
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        #endif
 
         glDepthMask(GL_TRUE);
 
@@ -331,6 +424,14 @@ void initialize()
         vec4{0.8, 0.9, 1.0, 1.0},
         vec3{ 0, 300, 350 }
     );
+
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGui::StyleColorsDark();
+    ImGui_ImplGlfw_InitForOpenGL(window, true);
+    ImGui_ImplOpenGL3_Init("#version 330");
+#endif
 }
 
 int main(void)
