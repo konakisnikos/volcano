@@ -6,7 +6,7 @@
 #include <common/model.h>
 #include <glm/gtx/string_cast.hpp>
 
-#define USE_PARALLEL_TRANSFORM
+//#define USE_PARALLEL_TRANSFORM
 
 //Gives a random number between 0 and 1
 #define RAND ((float) rand()) / (float) RAND_MAX
