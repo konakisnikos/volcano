@@ -1,5 +1,6 @@
 # Build directories
 build/
+cmake-build-*/
 bin/
 obj/
 
@@ -21,6 +22,7 @@ launch-lab05.sh
 
 # IDE/Editor files
 .vscode/
+.idea/
 .vs/
 *.vcxproj
 *.vcxproj.filters
@@ -76,3 +78,8 @@ external/*/bin/
 
 # Log files
 *.log
+
+# Runtime/editor state (not part of the submitted scene)
+imgui.ini
+AGENTS.md
+CLAUDE.md
