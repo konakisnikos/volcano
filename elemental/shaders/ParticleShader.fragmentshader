@@ -4,13 +4,58 @@ out vec4 fragmentColor;
 
 in vec2 UV;
 in float vs_life;
+flat in float vs_seed;
 
+uniform sampler2D texture0; // kept for compatibility; not sampled (see below)
 
-uniform sampler2D texture0;
+// Each emitter supplies its own color + opacity. The soft round shape is generated
+// procedurally from the quad's UVs rather than from the (near-black) smoke texture,
+// so particles read as soft puffs/drops and stay fully under our color control.
+uniform vec3 uTint = vec3(1.0);
+uniform float uAlphaScale = 1.0;
+// 0 keeps the simple radial shape used by rain.  1 builds an irregular,
+// multi-lobed silhouette for smoke and clouds, so the billboards overlap as
+// one continuous volume instead of reading as a stack of round particles.
+uniform float uPuffiness = 0.0;
+
+float puffCircle(vec2 p, vec2 center, float radius) {
+    return 1.0 - smoothstep(radius * 0.42, radius, length(p - center));
+}
 
 void main() {
-    //fragmentColor = vec4(texture(texture0, UV).rgb, 0.5f);
-    vec4 texColor = texture(texture0, UV);
-    vec4 texColor = vec4(1.0, 1.0, 1.0, 1.0);
-    fragmentColor = vec4(texColor.rgb, vs_life);
+    vec2 p = UV - vec2(0.5);
+
+    // The base outline is subtly warped.  Three offset lobes then break up the
+    // remaining circular edge; their direction varies per billboard.
+    float angle = atan(p.y, p.x);
+    float edgeWarp = 1.0
+                   + 0.075 * sin(angle * 5.0 + vs_seed * 6.28318)
+                   + 0.040 * sin(angle * 9.0 - vs_seed * 11.0);
+    float irregularBody = 1.0 - smoothstep(0.20 * edgeWarp,
+                                           0.45 * edgeWarp, length(p));
+
+    float seedAngle = vs_seed * 6.28318;
+    vec2 direction = vec2(cos(seedAngle), sin(seedAngle));
+    vec2 perpendicular = vec2(-direction.y, direction.x);
+    float lobeA = puffCircle(p, direction * 0.165, 0.36);
+    float lobeB = puffCircle(p, -direction * 0.145 + perpendicular * 0.065, 0.34);
+    float lobeC = puffCircle(p, -perpendicular * 0.165, 0.31);
+    float puffShape = max(irregularBody,
+                          max(lobeA * 0.88, max(lobeB * 0.84, lobeC * 0.78)));
+
+    // Retain the compact radial profile for effects such as rain.  Smoke and
+    // clouds set uPuffiness close to one and therefore use the irregular shape.
+    float radialShape = 1.0 - smoothstep(0.0, 0.5, length(p));
+    // Two inexpensive waves introduce internal density variation. They make a
+    // large billboard read as billowing smoke instead of a flat coloured blob.
+    float densityDetail = 0.76
+        + 0.14 * sin((p.x * 13.0 + p.y * 9.0) + vs_seed * 17.0)
+        + 0.10 * sin((p.x * 23.0 - p.y * 15.0) - vs_seed * 29.0);
+    float soft = mix(radialShape,
+                     puffShape * clamp(densityDetail, 0.48, 1.0),
+                     clamp(uPuffiness, 0.0, 1.0));
+
+    float alpha = soft * vs_life * uAlphaScale;
+    if (alpha < 0.01) discard;
+    fragmentColor = vec4(uTint, alpha);
 }

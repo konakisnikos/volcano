@@ -8,36 +8,73 @@ layout(location = 2) in vec2 aTexCoords;
 // --- NEW INPUTS (The Map & The Rules) ---
 layout(location = 3) in float inRiverMask; // 1.0 = River, 0.0 = Rock
 layout(location = 4) in float inDist;      // Distance from crater (for animation)
+layout(location = 5) in float inGrassMask; // broad moist corridor around the river
 // ----------------------------------------
 
 // UNIFORMS
 uniform mat4 M;
 uniform mat4 V;
 uniform mat4 P;
-uniform vec3 light_position_worldspace; 
 uniform float u_LavaTime;
+uniform float u_CraterRadius;
+uniform float u_WaterFill;
+uniform float u_RiverInnerRadius;
+uniform float u_RiverOuterRadius;
 
 // OUTPUTS to Fragment Shader
-out vec4 vertex_position_cameraspace;
-out vec4 vertex_normal_cameraspace;
-out vec4 light_position_cameraspace;
 out vec2 vTexCoord;
 
 // --- NEW OUTPUTS (Passing data to the pixel painter) ---
 out float vRiverMask;
 out float vDist;
+out float vGrassMask;
 // -------------------------------------------------------
 
 out vec3 vWorldPos;
+out vec3 vWorldNormal;
 
 void main() {
     float speed = 20.0;
     float flowHead = u_LavaTime * speed;
-    float flowMask = 1.0 - smoothstep(flowHead, flowHead + 10.0, inDist);
-    float riverBedMask = smoothstep(0.55, 0.9, inRiverMask);
-    float lavaPresence = riverBedMask * flowMask;
+    float frontPerturbation = sin(vertexPosition_modelspace.x * 0.10
+                                  + vertexPosition_modelspace.z * 0.025
+                                  - u_LavaTime * 1.4) * 4.0;
+    float flowMask = 1.0 - smoothstep(flowHead + frontPerturbation,
+                                     flowHead + 20.0 + frontPerturbation, inDist);
+    float riverBedMask = smoothstep(0.34, 0.82, inRiverMask);
+    float craterMask = 1.0 - smoothstep(u_CraterRadius * 0.72, u_CraterRadius, inDist);
+    float lavaActive = smoothstep(-0.25, 0.35, u_LavaTime);
+    float lavaPresence = max(riverBedMask * flowMask, craterMask * lavaActive);
     float liftMask = smoothstep(0.15, 0.85, lavaPresence);
-    float liftAmount = 0.35 * liftMask;
+    float surfaceWave = 0.5 + 0.5 * sin(vertexPosition_modelspace.x * 0.08
+                                        + vertexPosition_modelspace.z * 0.05
+                                        - u_LavaTime * 1.25);
+    float liftAmount = (0.20 + 0.10 * surfaceWave) * liftMask;
+
+    // Rain wets the whole bed first. Water then collects in irregular low spots,
+    // biased toward the downstream end, and those pools gradually connect.
+    float downstream01 = smoothstep(u_RiverInnerRadius,
+                                    u_RiverOuterRadius, inDist);
+    float basinVariation = 0.5 * sin(vertexPosition_modelspace.x * 0.061
+                                     + vertexPosition_modelspace.z * 0.027)
+                         + 0.5 * sin(vertexPosition_modelspace.x * -0.043
+                                     + vertexPosition_modelspace.z * 0.071 + 1.7);
+    float basinThreshold = mix(0.72, 0.30, downstream01)
+                         + basinVariation * 0.10;
+    float fillEase = smoothstep(0.0, 1.0, u_WaterFill);
+    float localPool = smoothstep(basinThreshold - 0.07,
+                                 basinThreshold + 0.07, fillEase);
+    float runoffFilm = smoothstep(0.01, 0.10, u_WaterFill)
+                     * (0.10 + 0.22 * fillEase);
+    float waterAmount = max(runoffFilm, localPool);
+    float waterPresence = riverBedMask * waterAmount;
+    float waterRipple = sin(vertexPosition_modelspace.x * 0.12
+                            + vertexPosition_modelspace.z * 0.055
+                            + u_LavaTime * 2.0);
+    // Lift only where water has actually pooled; the thin runoff film remains
+    // close to the bed while connected pools get a visible water surface.
+    liftAmount += waterPresence * (0.18 + 0.38 * localPool
+                                  + 0.07 * waterRipple);
 
     vec3 displacedPosition = vertexPosition_modelspace + vec3(0.0, liftAmount, 0.0);
 
@@ -46,9 +83,7 @@ void main() {
 
     gl_Position =  P * V * M * vec4(displacedPosition, 1);
 
-    vertex_position_cameraspace = V * M * vec4(displacedPosition, 1);
-    vertex_normal_cameraspace = V * M * vec4(vertexNormal_modelspace, 0);
-    light_position_cameraspace = V * vec4(light_position_worldspace, 1.0); 
+    vWorldNormal = normalize(mat3(transpose(inverse(M))) * vertexNormal_modelspace);
 
     // Pass Texture Coordinates
     vTexCoord = aTexCoords;
@@ -56,4 +91,5 @@ void main() {
     // --- PASS THE NEW DATA ---
     vRiverMask = inRiverMask;
     vDist = inDist;
+    vGrassMask = inGrassMask;
 }

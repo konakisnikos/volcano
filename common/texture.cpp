@@ -234,3 +234,25 @@ GLuint loadSOIL(const char* imagePath) {
 
     return texture;
 }
+
+GLuint loadSOILWithAlpha(const char* imagePath) {
+    cout << "Reading RGBA image: " << imagePath << endl;
+
+    GLuint texture = SOIL_load_OGL_texture(
+        imagePath,
+        SOIL_LOAD_RGBA,
+        SOIL_CREATE_NEW_ID,
+        SOIL_FLAG_MIPMAPS
+    );
+    if (texture == 0) {
+        throw runtime_error(string("SOIL loading error: ") + SOIL_last_result());
+    }
+
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    return texture;
+}

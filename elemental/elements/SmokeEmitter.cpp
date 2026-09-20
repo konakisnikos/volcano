@@ -6,15 +6,49 @@
 SmokeEmitter::SmokeEmitter(Drawable* _model,
                            int number,
                            glm::vec3 emitterPosition,
-                           float spawnRadius): IntParticleEmitter(_model, number) {
+                           float spawnRadius,
+                           float minParticleScale,
+                           float maxParticleScale,
+                           float minimumRiseSpeed,
+                           float riseSpeedVariation,
+                           float lifeDecay): IntParticleEmitter(_model, number),
+                                               m_minParticleScale(minParticleScale),
+                                               m_maxParticleScale(maxParticleScale),
+                                               m_minimumRiseSpeed(minimumRiseSpeed),
+                                               m_riseSpeedVariation(riseSpeedVariation),
+                                               m_lifeDecay(lifeDecay) {
     emitter_pos = emitterPosition;
     radius = spawnRadius;
+    use_sorting = true;
 
     // Initialize all particles immediately so we don't see discrete spawn batches.
     active_particles = number_of_particles;
     for (int i = 0; i < active_particles; ++i) {
         createNewParticle(i);
     }
+}
+
+void SmokeEmitter::followMovingSource(const glm::vec3& newPosition,
+                                      float dt,
+                                      float respawnsPerSecond) {
+    const glm::vec3 previousPosition = emitter_pos;
+    m_followRespawnAccumulator += std::max(0.0f, dt) * respawnsPerSecond;
+
+    int respawnCount = static_cast<int>(m_followRespawnAccumulator);
+    m_followRespawnAccumulator -= static_cast<float>(respawnCount);
+    respawnCount = std::min(respawnCount, active_particles);
+
+    for (int i = 0; i < respawnCount; ++i) {
+        // At high simulation speeds one rendered frame may cover a sizeable
+        // section of river. Spread this frame's births across that section so
+        // the trail stays continuous instead of becoming separated clusters.
+        const float alongStep = static_cast<float>(i + 1)
+                              / static_cast<float>(respawnCount);
+        emitter_pos = glm::mix(previousPosition, newPosition, alongStep);
+        createNewParticle(m_followRespawnCursor);
+        m_followRespawnCursor = (m_followRespawnCursor + 1) % active_particles;
+    }
+    emitter_pos = newPosition;
 }
 
 void SmokeEmitter::updateParticles(float time, float dt, glm::vec3 camera_pos) {
@@ -31,7 +65,7 @@ void SmokeEmitter::updateParticles(float time, float dt, glm::vec3 camera_pos) {
 
         // Age / lifetime in [0,1]
         // Lower value = longer lifetime = particles can reach higher.
-        particle.life -= dt * 0.12f;
+        particle.life -= dt * m_lifeDecay;
 
         if (particle.life <= 0.0f) {
             createNewParticle(i);
@@ -56,8 +90,8 @@ void SmokeEmitter::updateParticles(float time, float dt, glm::vec3 camera_pos) {
         else radial = glm::vec3(0.0f);
 
         // Small lateral noise + radial push; both increase with height.
-        float noiseStrength = 10.0f + 7.6f * height01;
-        float spreadStrength = 2.0f + 6.2f * height01;
+        float noiseStrength = (10.0f + 7.6f * height01) * turbulence;
+        float spreadStrength = (2.0f + 6.2f * height01) * turbulence;
         glm::vec3 wind(
             (RAND - 0.5f) * noiseStrength,
             0.0f,
@@ -74,13 +108,12 @@ void SmokeEmitter::updateParticles(float time, float dt, glm::vec3 camera_pos) {
         particle.position += particle.velocity * dt;
 
     // Slow rotation for texture variation
-    particle.rot_angle += 20.0f * dt;
+    particle.rot_angle += 20.0f * turbulence * dt;
 
     // Make smoke puffs grow over time (mass == scale)
     float t = 1.0f - particle.life;                  // 0 → 1 over lifetime
-    float minScale = 2.0f;
-    float maxScale = 18.5f;
-    particle.mass = minScale + (maxScale - minScale) * t;
+    particle.mass = m_minParticleScale
+                  + (m_maxParticleScale - m_minParticleScale) * t;
         particle.dist_from_camera = length(particle.position - camera_pos);
 
         auto billRot = calculateBillboardRotationMatrix(particle.position, camera_pos);
@@ -93,20 +126,23 @@ void SmokeEmitter::updateParticles(float time, float dt, glm::vec3 camera_pos) {
 void SmokeEmitter::createNewParticle(int index) {
     particleAttributes& particle = p_attributes[index];
 
-// Spawn in a small disk around the emitter (crater mouth etc.)
-float x = (RAND - 0.5f) * 6.0f * radius;
-float z = (RAND - 0.5f) * 6.0f * radius;
+// Uniform disk distribution gives the source a natural rounded footprint and
+// avoids the visible square boundary produced by independent X/Z random values.
+float spawnAngle = RAND * 6.2831853f;
+float spawnDistance = std::sqrt(RAND) * radius;
+float x = std::cos(spawnAngle) * spawnDistance;
+float z = std::sin(spawnAngle) * spawnDistance;
 particle.position = emitter_pos + glm::vec3(x, 0.0f, z);
 
 // Mostly upward velocity with a little sideways spread
 particle.velocity = glm::vec3(
     0.0f,                            // sideways X (spread comes later with height)
-    45.0f + RAND * 10.0f,            // upward
+    m_minimumRiseSpeed + RAND * m_riseSpeedVariation, // upward
     0.0f                             // sideways Z
 );
 
 // Initial scale: small puff that will grow
-particle.mass = 7.3f;
+particle.mass = m_minParticleScale;
 
 // Random spin axis
 particle.rot_axis = glm::normalize(glm::vec3(

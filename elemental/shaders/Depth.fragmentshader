@@ -1,0 +1,6 @@
+#version 330 core
+
+// Depth-only pass: the depth buffer is written automatically by the
+// fixed-function pipeline, so there is nothing to output here.
+void main() {
+}

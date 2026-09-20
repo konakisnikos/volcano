@@ -5,13 +5,33 @@
 using namespace glm;
 
 Camera::Camera(GLFWwindow* window) : window(window) {
-    position = vec3(-840 ,537, 828);
-    horizontalAngle = 3.14f;
-    verticalAngle = 0.0f;
-    FoV = 45.0f;
     speed = 280.0f;
     mouseSpeed = 0.001f;
-    fovSpeed = 2.0f;
+    fovSpeed = 35.0f;
+    mouseLookEnabled = true;
+    resetToEstablishingShot();
+}
+
+void Camera::resetToEstablishingShot() {
+    // A slightly off-centre view makes the river a leading line while keeping the
+    // crater against open sky. These values are deliberately explicit so the shot
+    // is easy to reproduce and explain during the project presentation.
+    position = vec3(235.0f, 365.0f, 1040.0f);
+    const vec3 target(-35.0f, 125.0f, -285.0f);
+    const vec3 direction = normalize(target - position);
+    horizontalAngle = atan2(direction.x, direction.z);
+    verticalAngle = asin(direction.y);
+    FoV = 43.0f;
+}
+
+void Camera::setMouseLookEnabled(bool enabled) {
+    mouseLookEnabled = enabled;
+    glfwSetInputMode(window, GLFW_CURSOR, enabled ? GLFW_CURSOR_DISABLED : GLFW_CURSOR_NORMAL);
+    if (enabled) {
+        int width, height;
+        glfwGetWindowSize(window, &width, &height);
+        glfwSetCursorPos(window, width / 2, height / 2);
+    }
 }
 
 void Camera::update() {
@@ -29,16 +49,15 @@ void Camera::update() {
     int width, height;
     glfwGetWindowSize(window, &width, &height);
 
-    // Reset mouse position for next frame
-    glfwSetCursorPos(window, width / 2, height / 2);
+    if (mouseLookEnabled) {
+        // Reset mouse position for next frame and convert the offset to view angles.
+        glfwSetCursorPos(window, width / 2, height / 2);
+        horizontalAngle += mouseSpeed * float(width / 2 - xPos);
+        verticalAngle += mouseSpeed * float(height / 2 - yPos);
+        verticalAngle = glm::clamp(verticalAngle, -1.45f, 1.45f);
+    }
 
-    // Task 5.3: Compute new horizontal and vertical angles, given windows size
-    // and cursor position
-    horizontalAngle += mouseSpeed * float(width / 2 - xPos);
-    verticalAngle += mouseSpeed * float(height / 2 - yPos);
-
-    // Task 5.4: right and up vectors of the camera coordinate system
-    // use spherical coordinates
+    // Derive the camera basis from spherical look angles.
     vec3 direction(
         cos(verticalAngle) * sin(horizontalAngle),
         sin(verticalAngle),
@@ -55,8 +74,7 @@ void Camera::update() {
     // Up vector
     vec3 up = cross(right, direction);
 
-    // Task 5.5: update camera position using the direction/right vectors
-    // Move forward
+    // Move in the current view plane.
     if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS) {
         position += direction * deltaTime * speed;
     }
@@ -73,25 +91,30 @@ void Camera::update() {
         position -= right * deltaTime * speed;
     }
 
-    // Task 5.6: handle zoom in/out effects
+    // Frame-rate-independent zoom with a range that keeps the perspective valid.
     if (glfwGetKey(window, GLFW_KEY_UP) == GLFW_PRESS) {
-        FoV -= fovSpeed;
+        FoV -= fovSpeed * deltaTime;
     }
     if (glfwGetKey(window, GLFW_KEY_DOWN) == GLFW_PRESS) {
-        FoV += fovSpeed;
+        FoV += fovSpeed * deltaTime;
     }
+    FoV = glm::clamp(FoV, 20.0f, 90.0f);
 
-    // Task 5.7: construct projection and view matrices
-    projectionMatrix = perspective(radians(FoV), 4.0f / 3.0f, 0.1f, 10000.0f);
+    // Projection must follow framebuffer pixels rather than a fixed 4:3 ratio.
+    // This also handles Retina/HiDPI windows where logical and drawable sizes differ.
+    int framebufferWidth = 0;
+    int framebufferHeight = 0;
+    glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
+    const float aspectRatio = framebufferHeight > 0
+        ? static_cast<float>(framebufferWidth) / static_cast<float>(framebufferHeight)
+        : 4.0f / 3.0f;
+
+    projectionMatrix = perspective(radians(FoV), aspectRatio, 0.1f, 10000.0f);
     viewMatrix = lookAt(
         position,
         position + direction,
         up
     );
-    //*/
-
-    // Homework XX: perform orthographic projection
-
     // For the next frame, the "last time" will be "now"
     lastTime = currentTime;
 }

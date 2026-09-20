@@ -1,0 +1,76 @@
+#version 330 core
+
+in vec3 vWorldNormal;
+in vec3 vWorldPos;
+in float vGrassVisibility;
+in vec3 vSurfaceColor;
+out vec4 fragment_color;
+
+uniform vec3 cameraPosition_worldspace;
+uniform float uLightningFlash;
+uniform int uGrassPass;
+
+#define MAX_SCORCHES 8
+uniform int uScorchCount;
+uniform vec2 uScorchPosXZ[MAX_SCORCHES];
+uniform float uScorchRadius[MAX_SCORCHES];
+uniform float uScorchStrength[MAX_SCORCHES];
+
+struct Light {
+    vec4 La;
+    vec4 Ld;
+    vec4 Ls;
+    vec3 lightPosition_worldspace;
+};
+uniform Light light[2];
+
+void main() {
+    if (uGrassPass != 0 && vGrassVisibility < 0.025) discard;
+
+    vec3 lightDir = normalize(light[0].lightPosition_worldspace - vWorldPos);
+    vec3 viewDir = normalize(cameraPosition_worldspace - vWorldPos);
+    vec3 halfDir = normalize(lightDir + viewDir);
+    // Grass blades are two-sided sheets. abs() lights both faces consistently;
+    // closed flower meshes keep the usual one-sided diffuse response.
+    float normalLight = dot(vWorldNormal, lightDir);
+    float cosTheta = uGrassPass != 0
+        ? 0.28 + 0.72 * abs(normalLight)
+        : clamp(normalLight, 0.0, 1.0);
+    float specular = pow(max(dot(vWorldNormal, halfDir), 0.0), 18.0);
+
+    // A small indirect sky term keeps dark bark and leaves readable in the
+    // deliberately low moonlight without making them look self-illuminated.
+    vec3 surfaceColor = vSurfaceColor;
+    if (uGrassPass != 0) {
+        float variation = 0.88 + 0.12
+            * sin(vWorldPos.x * 0.19 + vWorldPos.z * 0.13);
+        surfaceColor *= variation;
+
+        // The terrain scorch alone would be hidden by thousands of still-green
+        // blades. Apply the same strike positions to grass so each impact burns
+        // a visibly irregular patch through the complete meadow.
+        float grassScorch = 0.0;
+        for (int i = 0; i < MAX_SCORCHES; ++i) {
+            if (i >= uScorchCount) break;
+            float distanceToStrike = length(vWorldPos.xz - uScorchPosXZ[i]);
+            float irregularEdge = 0.88 + 0.10
+                * sin(vWorldPos.x * 0.11 + vWorldPos.z * 0.073 + float(i));
+            float localBurn = 1.0 - smoothstep(uScorchRadius[i] * 0.42,
+                                               uScorchRadius[i] * irregularEdge,
+                                               distanceToStrike);
+            grassScorch = max(grassScorch, localBurn * uScorchStrength[i]);
+        }
+        surfaceColor = mix(surfaceColor, vec3(0.055, 0.026, 0.012),
+                           grassScorch * 0.94);
+    }
+    vec3 indirect = uGrassPass != 0
+        ? vec3(0.075, 0.135, 0.055)
+        : vec3(0.075, 0.078, 0.085);
+    vec3 ambient = (light[0].La.rgb + indirect) * surfaceColor;
+    vec3 diffuse = light[0].Ld.rgb * surfaceColor * cosTheta;
+    vec3 highlight = light[0].Ls.rgb * specular
+                   * (uGrassPass != 0 ? 0.035 : 0.16);
+    vec3 flash = vec3(0.20, 0.27, 0.42) * uLightningFlash * surfaceColor;
+
+    fragment_color = vec4(ambient + diffuse + highlight + flash, 1.0);
+}

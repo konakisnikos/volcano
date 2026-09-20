@@ -84,11 +84,16 @@ public:
     std::vector<glm::vec2> uvs, indexedUVS;
     std::vector<unsigned int> indices;
 
-    GLuint VAO, verticesVBO, uvsVBO, normalsVBO, elementVBO;
+    GLuint VAO = 0;
+    GLuint verticesVBO = 0;
+    GLuint uvsVBO = 0;
+    GLuint normalsVBO = 0;
+    GLuint elementVBO = 0;
 
 private:
     void createContext();
     bool m_useIndexing;
+    std::vector<GLuint> m_extraVBOs;
 };
 
 /*****************************************************************************/
@@ -121,7 +126,11 @@ namespace ogl {
         std::vector<glm::vec2> uvs, indexedUVS;
         std::vector<unsigned int> indices;
         Material mtl;
-        GLuint VAO, verticesVBO, uvsVBO, normalsVBO, elementVBO;
+        GLuint VAO = 0;
+        GLuint verticesVBO = 0;
+        GLuint uvsVBO = 0;
+        GLuint normalsVBO = 0;
+        GLuint elementVBO = 0;
     private:
         void createContext();
     };

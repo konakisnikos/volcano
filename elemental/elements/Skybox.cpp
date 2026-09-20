@@ -55,11 +55,24 @@ static const float SKYBOX_VERTICES[] = {
 Skybox::Skybox(const std::vector<std::string>& faces)
 	: m_drawable(nullptr),
 	  m_cubemapTexture(0),
-	  m_shaderProgram(0)
+	  m_shaderProgram(0),
+	  m_viewLocation(-1),
+	  m_projectionLocation(-1),
+	  m_flashLocation(-1),
+	  m_timeLocation(-1),
+	  m_moonLocation(-1),
+	  m_calmLocation(-1)
 {
 	setupMesh();
 	loadCubemap(faces);
-	m_shaderProgram = loadShaders("../elemental/shaders/Skybox.vertexshader", "../elemental/shaders/Skybox.fragmentshader");
+	m_shaderProgram = loadShaders(ELEMENTAL_SHADER_DIR "/Skybox.vertexshader",
+	                              ELEMENTAL_SHADER_DIR "/Skybox.fragmentshader");
+	m_viewLocation = glGetUniformLocation(m_shaderProgram, "V");
+	m_projectionLocation = glGetUniformLocation(m_shaderProgram, "P");
+	m_flashLocation = glGetUniformLocation(m_shaderProgram, "uLightningFlash");
+	m_timeLocation = glGetUniformLocation(m_shaderProgram, "uTime");
+	m_moonLocation = glGetUniformLocation(m_shaderProgram, "uMoonDirection");
+	m_calmLocation = glGetUniformLocation(m_shaderProgram, "uCalmProgress");
 
 	glUseProgram(m_shaderProgram);
 	GLint samplerLocation = glGetUniformLocation(m_shaderProgram, "skybox");
@@ -91,7 +104,11 @@ Skybox::~Skybox()
 	}
 }
 
-void Skybox::Draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix)
+void Skybox::Draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix,
+                  float lightningFlash,
+                  float timeSeconds,
+                  const glm::vec3& moonDirection,
+                  float calmProgress)
 {
 	if (!m_drawable || m_cubemapTexture == 0 || m_shaderProgram == 0)
 	{
@@ -104,15 +121,30 @@ void Skybox::Draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix
 	glUseProgram(m_shaderProgram);
 
 	glm::mat4 viewNoTranslation = glm::mat4(glm::mat3(viewMatrix));
-	GLint viewLocation = glGetUniformLocation(m_shaderProgram, "V");
-	GLint projectionLocation = glGetUniformLocation(m_shaderProgram, "P");
-	if (viewLocation >= 0)
+	if (m_viewLocation >= 0)
 	{
-		glUniformMatrix4fv(viewLocation, 1, GL_FALSE, &viewNoTranslation[0][0]);
+		glUniformMatrix4fv(m_viewLocation, 1, GL_FALSE, &viewNoTranslation[0][0]);
 	}
-	if (projectionLocation >= 0)
+	if (m_projectionLocation >= 0)
 	{
-		glUniformMatrix4fv(projectionLocation, 1, GL_FALSE, &projectionMatrix[0][0]);
+		glUniformMatrix4fv(m_projectionLocation, 1, GL_FALSE, &projectionMatrix[0][0]);
+	}
+	if (m_flashLocation >= 0)
+	{
+		glUniform1f(m_flashLocation, lightningFlash);
+	}
+	if (m_timeLocation >= 0)
+	{
+		glUniform1f(m_timeLocation, timeSeconds);
+	}
+	if (m_moonLocation >= 0)
+	{
+		glm::vec3 normalizedMoon = glm::normalize(moonDirection);
+		glUniform3fv(m_moonLocation, 1, &normalizedMoon[0]);
+	}
+	if (m_calmLocation >= 0)
+	{
+		glUniform1f(m_calmLocation, calmProgress);
 	}
 
 	glActiveTexture(GL_TEXTURE0);

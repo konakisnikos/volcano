@@ -28,4 +28,7 @@ GLuint loadDDS(const char* imagePath);
 */
 GLuint loadSOIL(const char* imagePath);
 
+// Variant used by cutout/billboard assets that require their PNG alpha channel.
+GLuint loadSOILWithAlpha(const char* imagePath);
+
 #endif

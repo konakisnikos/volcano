@@ -19,9 +19,12 @@ public:
     float speed; // units / second
     float mouseSpeed;
     float fovSpeed;
+    bool mouseLookEnabled;
 
     Camera(GLFWwindow* window);
     void update();
+    void setMouseLookEnabled(bool enabled);
+    void resetToEstablishingShot();
 };
 
 #endif

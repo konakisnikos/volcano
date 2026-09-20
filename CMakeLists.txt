@@ -44,8 +44,11 @@ if (ELEMENTAL_ENABLE_IMGUI)
     ${imgui_SOURCE_DIR}
     ${imgui_SOURCE_DIR}/backends
     ${CMAKE_SOURCE_DIR}/external/glew-1.13.0/include
+    ${CMAKE_SOURCE_DIR}/external/glfw-3.2.1/include
   )
-  target_link_libraries(imgui_lib PUBLIC glfw OpenGL::GL)
+  # The executable already links GLFW. Keeping it off imgui_lib's transitive
+  # interface avoids passing the same static archive to the final linker twice.
+  target_link_libraries(imgui_lib PRIVATE OpenGL::GL)
   target_compile_definitions(imgui_lib PUBLIC IMGUI_IMPL_OPENGL_LOADER_GLEW)
 endif()
 
@@ -86,6 +89,11 @@ set(SRC
   elemental/CrackSystem.cpp
   elemental/IntParticleEmitter.cpp
   elemental/elements/SmokeEmitter.cpp
+  elemental/elements/CloudEmitter.cpp
+  elemental/elements/RainEmitter.cpp
+  elemental/LightningSystem.cpp
+  elemental/GeometryFactory.cpp
+  elemental/InstancedPropRenderer.cpp
 
 )
 
@@ -103,6 +111,11 @@ set(HDR
   elemental/elements/VolcanoNoise.h
   elemental/IntParticleEmitter.h
   elemental/elements/SmokeEmitter.h
+  elemental/elements/CloudEmitter.h
+  elemental/elements/RainEmitter.h
+  elemental/LightningSystem.h
+  elemental/GeometryFactory.h
+  elemental/InstancedPropRenderer.h
 )
 
 
@@ -115,6 +128,14 @@ set(SHADERS
   elemental/shaders/Skybox.fragmentshader
   elemental/shaders/ParticleShader.vertexshader
   elemental/shaders/ParticleShader.fragmentshader
+  elemental/shaders/Depth.vertexshader
+  elemental/shaders/Depth.fragmentshader
+  elemental/shaders/Prop.vertexshader
+  elemental/shaders/Prop.fragmentshader
+  elemental/shaders/TreeBillboard.vertexshader
+  elemental/shaders/TreeBillboard.fragmentshader
+  elemental/shaders/Lightning.vertexshader
+  elemental/shaders/Lightning.fragmentshader
 )
 add_executable(elemental ${SRC} ${HDR} ${SHADERS})
 
@@ -128,6 +149,9 @@ target_include_directories(elemental PRIVATE ${PROJECT_INCLUDE_DIRS})
 
 target_compile_definitions(elemental PRIVATE
   TW_STATIC TW_NO_LIB_PRAGMA TW_NO_DIRECT3D GLEW_STATIC _CRT_SECURE_NO_WARNINGS
+  ELEMENTAL_SHADER_DIR="${CMAKE_SOURCE_DIR}/elemental/shaders"
+  ELEMENTAL_ASSET_DIR="${CMAKE_SOURCE_DIR}/elemental/assets"
+  ELEMENTAL_SKYBOX_DIR="${CMAKE_SOURCE_DIR}/skybox_blue"
 )
 
 # Link libraries
@@ -146,6 +170,14 @@ add_custom_command(TARGET elemental POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Skybox.fragmentshader $<TARGET_FILE_DIR:elemental>
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/ParticleShader.vertexshader $<TARGET_FILE_DIR:elemental>
   COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/ParticleShader.fragmentshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Depth.vertexshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Depth.fragmentshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Prop.vertexshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Prop.fragmentshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/TreeBillboard.vertexshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/TreeBillboard.fragmentshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Lightning.vertexshader $<TARGET_FILE_DIR:elemental>
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/elemental/shaders/Lightning.fragmentshader $<TARGET_FILE_DIR:elemental>
 )
 
 # Grouping for IDE organization (optional)

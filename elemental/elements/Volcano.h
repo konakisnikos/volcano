@@ -20,6 +20,13 @@ struct VolcanoStats {
     float craterBottom;     // Y position of crater floor
     float craterTop;        // Y position of crater rim
     glm::vec2 craterCenter; // (X, Z) position of crater center
+
+    // River channel extent (distance from craterCenter), for the domino chain:
+    // lava/water travel from riverInnerRadius out to riverOuterRadius.
+    float riverInnerRadius;
+    float riverOuterRadius;
+    glm::vec2 riverEndXZ;   // world-space (X, Z) of the far end of the river channel
+    float riverEndY;        // approximate world-space Y at the river end (river bed height)
 };
 
 
@@ -31,6 +38,10 @@ public:
     void Draw();
 
     VolcanoStats getStats() const { return m_stats; }
+
+    // Bilinear CPU lookup of the already-generated terrain. Particle sources use
+    // it to stay on the river bed while moving; it does not regenerate geometry.
+    float surfaceHeightAt(float worldX, float worldZ) const;
 
 private:
 
@@ -47,7 +58,9 @@ private:
     std::vector<glm::vec3> m_normals;
     std::vector<glm::vec2> m_texCoords;
     std::vector<float>     m_heightMap;  // grayscale heights from heightmap image
+    std::vector<float>     m_surfaceHeights;
     std::vector<float>     m_riverMasks;
+    std::vector<float>     m_grassMasks;
     std::vector<float>     m_distFromCenter;
 
     

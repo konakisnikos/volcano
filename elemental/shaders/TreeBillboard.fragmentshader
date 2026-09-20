@@ -1,0 +1,20 @@
+#version 330 core
+
+in vec2 vUV;
+out vec4 fragment_color;
+
+uniform sampler2D uTreeTexture;
+uniform vec3 uTint;
+uniform float uLightningFlash;
+
+void main() {
+    // SOIL uploads PNG rows in image order, so flip V for OpenGL UV space.
+    vec4 texel = texture(uTreeTexture, vec2(vUV.x, 1.0 - vUV.y));
+    if (texel.a < 0.16) discard;
+
+    // The sprite contains gentle baked shading. A cool multiplier integrates it
+    // into the moonlit scene while retaining enough green/brown to stay readable.
+    vec3 moonlit = texel.rgb * uTint * vec3(0.50, 0.59, 0.76);
+    vec3 flash = texel.rgb * vec3(0.22, 0.30, 0.46) * uLightningFlash;
+    fragment_color = vec4(moonlit + flash, texel.a);
+}

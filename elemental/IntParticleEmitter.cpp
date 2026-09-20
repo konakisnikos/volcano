@@ -23,10 +23,20 @@ IntParticleEmitter::IntParticleEmitter(Drawable* _model, int number) {
     configureVAO();
 }
 
+IntParticleEmitter::~IntParticleEmitter() {
+    glDeleteBuffers(1, &transformations_buffer);
+    glDeleteBuffers(1, &rotations_buffer);
+    glDeleteBuffers(1, &scales_buffer);
+    glDeleteBuffers(1, &lifes_buffer);
+    glDeleteVertexArrays(1, &emitterVAO);
+}
+
 void IntParticleEmitter::renderParticles(int time) {
     if (number_of_particles == 0) return;
     bindAndUpdateBuffers();
-    glDrawElementsInstanced(GL_TRIANGLES, 3 * model->indices.size(), GL_UNSIGNED_INT, 0, number_of_particles);
+    // indices.size() is already the total index count (3 per triangle); do NOT multiply
+    // by 3 again or glDrawElements reads past the element buffer and draws nothing.
+    glDrawElementsInstanced(GL_TRIANGLES, model->indices.size(), GL_UNSIGNED_INT, 0, number_of_particles);
 }
 
 glm::vec4 IntParticleEmitter::calculateBillboardRotationMatrix(glm::vec3 particle_pos, glm::vec3 camera_pos)
@@ -44,8 +54,12 @@ glm::vec4 IntParticleEmitter::calculateBillboardRotationMatrix(glm::vec3 particl
 void IntParticleEmitter::bindAndUpdateBuffers()
 {
     if (use_sorting) {
-        std::sort(p_attributes.begin(), p_attributes.end());
-        std::reverse(p_attributes.begin(), p_attributes.end());
+        // Standard alpha blending is order-dependent, so translucent puffs must
+        // reach the GPU from farthest to nearest relative to the camera.
+        std::sort(p_attributes.begin(), p_attributes.end(),
+                  [](const particleAttributes& a, const particleAttributes& b) {
+                      return a.dist_from_camera > b.dist_from_camera;
+                  });
     }
 
 #ifdef USE_PARALLEL_TRANSFORM
@@ -95,6 +109,12 @@ void IntParticleEmitter::bindAndUpdateBuffers()
     for (int i = 0; i < p_attributes.size(); i++) {
         auto p = p_attributes[i];
         scales[i] = p.mass;
+    }
+
+    // The parallel branch above fills lifes[]; the serial branch must too, otherwise
+    // the per-particle life attribute stays 0 and the shader discards every fragment.
+    for (int i = 0; i < p_attributes.size(); i++) {
+        lifes[i] = p_attributes[i].life;
     }
 #endif // USE_PARALLEL_TRANSFORM
 
@@ -208,4 +228,3 @@ void IntParticleEmitter::configureVAO()
 
     glBindVertexArray(0);
 }
-

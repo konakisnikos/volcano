@@ -7,15 +7,17 @@
 Volcano::Volcano(int gridSize, float maxTerrainWidth, float heightScale, glm::vec2 volcanoCenter)
     : m_gridSize(gridSize), m_width(maxTerrainWidth), m_heightScale(heightScale), m_volcanoCenter(volcanoCenter), m_drawable(nullptr)
 {
-    loadHeightMap("/Users/nikos/Desktop/elemental/elemental/assets/heightmap_8bit.png");
+    loadHeightMap(ELEMENTAL_ASSET_DIR "/heightmap_8bit.png");
     generateGeometry();
-    calculateNormals();
     m_drawable = new Drawable(m_positions, m_texCoords, m_normals, false);
     // Send River Mask to Layout 3
     m_drawable->addExtraAttribute(3, 1, m_riverMasks);
     
     // Send Distance to Layout 4
     m_drawable->addExtraAttribute(4, 1, m_distFromCenter);
+
+    // Broad vegetation corridor around the river, separate from the narrow bed.
+    m_drawable->addExtraAttribute(5, 1, m_grassMasks);
 
     std::cout << "Data sent to GPU successfully." << std::endl;
     std::cout << "Positions Size: " << m_positions.size() << std::endl;
@@ -32,6 +34,28 @@ Volcano::~Volcano() {
     }
 }
 
+float Volcano::surfaceHeightAt(float worldX, float worldZ) const {
+    if (m_surfaceHeights.empty() || m_gridSize < 2) return 0.0f;
+
+    const float halfWidth = m_width * 0.5f;
+    const float gridX = glm::clamp((worldX + halfWidth) / m_width, 0.0f, 1.0f)
+                      * static_cast<float>(m_gridSize - 1);
+    const float gridZ = glm::clamp((worldZ + halfWidth) / m_width, 0.0f, 1.0f)
+                      * static_cast<float>(m_gridSize - 1);
+    const int x0 = static_cast<int>(std::floor(gridX));
+    const int z0 = static_cast<int>(std::floor(gridZ));
+    const int x1 = glm::min(x0 + 1, m_gridSize - 1);
+    const int z1 = glm::min(z0 + 1, m_gridSize - 1);
+    const float tx = gridX - static_cast<float>(x0);
+    const float tz = gridZ - static_cast<float>(z0);
+
+    const float h00 = m_surfaceHeights[z0 * m_gridSize + x0];
+    const float h10 = m_surfaceHeights[z0 * m_gridSize + x1];
+    const float h01 = m_surfaceHeights[z1 * m_gridSize + x0];
+    const float h11 = m_surfaceHeights[z1 * m_gridSize + x1];
+    return glm::mix(glm::mix(h00, h10, tx), glm::mix(h01, h11, tx), tz);
+}
+
 
 
 void Volcano::generateGeometry() {
@@ -39,22 +63,26 @@ void Volcano::generateGeometry() {
     // STEP 1: Generate the Grid Data (The "Source")
     // ------------------------------------------------------------------
     std::vector<glm::vec3> tempGridPositions;
+    std::vector<glm::vec3> tempGridNormals;
     std::vector<glm::vec2> tempGridTexCoords;
     
-    // NEW: Temporary vectors to store the math results before unrolling
+    // Temporary vectors hold per-grid-point attributes before unrolling.
     std::vector<float> tempGridRiverMasks; 
+    std::vector<float> tempGridGrassMasks;
     std::vector<float> tempGridDist;      
 
     // Reserve memory to prevent re-allocations
     tempGridPositions.reserve(m_gridSize * m_gridSize);
+    tempGridNormals.resize(m_gridSize * m_gridSize, glm::vec3(0.0f, 1.0f, 0.0f));
     tempGridTexCoords.reserve(m_gridSize * m_gridSize);
     tempGridRiverMasks.reserve(m_gridSize * m_gridSize);
+    tempGridGrassMasks.reserve(m_gridSize * m_gridSize);
     tempGridDist.reserve(m_gridSize * m_gridSize);
 
     float step = m_width / (m_gridSize - 1);
     float halfWidth = m_width * 0.5f;
 
-    // --- Noise & Terrain Constants (Kept exactly as you had them) ---
+    // Noise and terrain constants.
     constexpr float BASE_FREQUENCY = 0.04f;   
     constexpr int NOISE_OCTAVES = 6;           
     constexpr float NOISE_PERSISTENCE = 0.65f;
@@ -62,7 +90,7 @@ void Volcano::generateGeometry() {
     const glm::vec2 NOISE_OFFSET(113.7f, -57.3f);
 
     const float noiseAmplitude = m_heightScale * 0.15f;   
-    const float volcanoSigma = m_width * 0.10f;           
+    const float volcanoSigma = m_width * 0.10f;
     const float volcanoAmplitude = m_heightScale * 11.4f;  
 
     const float craterRadius = volcanoSigma * 0.3f;       
@@ -70,12 +98,12 @@ void Volcano::generateGeometry() {
     const float craterBlend  = craterRadius * 0.75f;      
 
     // River controls
-    const float riverNoiseX = halfWidth * 0.03f;          
-    const float riverWidth = m_width * 0.010f;            
-    const float riverBlend = riverWidth * 2.2f;           
+    const float riverNoiseX = halfWidth * 0.03f;
+    const float riverWidth = m_width * 0.010f;
+    const float riverBlend = riverWidth * 2.2f;
     const float riverDepth = m_heightScale * 1.65f;       
     const float riverInnerRadius = craterRadius * 1.05f;  
-    const float riverOuterRadius = riverInnerRadius + m_width * 0.55f; 
+    const float riverOuterRadius = riverInnerRadius + m_width * 0.55f;
     const float riverRadialBlend = volcanoSigma * 0.35f;  
     const float riverStartTargetX = 0.0f;                 
     const float riverStartRadius = craterRadius * 1.05f;  
@@ -93,7 +121,14 @@ void Volcano::generateGeometry() {
     m_stats.craterRadius = craterRadius;
     m_stats.craterBottom = volcanoAmplitude - craterDepth; // Peak minus depth
     m_stats.craterTop = volcanoAmplitude;                   // The rim is at peak
-    m_stats.craterCenter = m_volcanoCenter;                 // (X, Z) position 
+    m_stats.craterCenter = m_volcanoCenter;                 // (X, Z) position
+
+    // River channel extent, for the domino chain (lava/water travel along +Z from the crater).
+    m_stats.riverInnerRadius = riverInnerRadius;
+    m_stats.riverOuterRadius = riverOuterRadius;
+    m_stats.riverEndXZ = m_volcanoCenter + glm::vec2(riverStartTargetX, riverOuterRadius);
+    m_stats.riverEndY = m_stats.riverBedY;
+    float closestRiverEndDistance2 = 1.0e30f;
 
     // Helper Lambda
     auto sampleHeightMap = [this](int i, int j, float fallbackNoiseHeight) {
@@ -122,12 +157,45 @@ void Volcano::generateGeometry() {
 
             float xFromVolcano = x - m_volcanoCenter.x;
             float zFromVolcano = z - m_volcanoCenter.y;
-            float volcanoHeight = volcano_noise::gaussianPeak(xFromVolcano, zFromVolcano, volcanoSigma, volcanoAmplitude);
             float distanceFromCenter = std::sqrt(xFromVolcano * xFromVolcano + zFromVolcano * zFromVolcano);
 
-            float craterMask = glm::smoothstep(craterRadius + craterBlend, craterRadius, distanceFromCenter);
+            // A pure Gaussian produces an unnaturally perfect cone. Warping the
+            // radial distance makes a readable but still inexpensive volcanic
+            // silhouette, while the higher-frequency term suggests erosion ridges.
+            float angle = std::atan2(zFromVolcano, xFromVolcano);
+            float silhouetteWarp = 1.0f
+                                 + 0.10f * std::sin(angle * 3.0f + 0.65f)
+                                 + 0.045f * std::sin(angle * 7.0f - 0.9f);
+            float shapedX = xFromVolcano / silhouetteWarp;
+            float shapedZ = zFromVolcano / silhouetteWarp;
+            float volcanoHeight = volcano_noise::gaussianPeak(
+                shapedX, shapedZ, volcanoSigma, volcanoAmplitude);
+
+            float ridgeBand = glm::smoothstep(craterRadius * 1.15f,
+                                               volcanoSigma * 1.35f,
+                                               distanceFromCenter)
+                            * (1.0f - glm::smoothstep(volcanoSigma * 2.15f,
+                                                      volcanoSigma * 3.1f,
+                                                      distanceFromCenter));
+            float ridges = std::sin(angle * 9.0f + distanceFromCenter * 0.032f)
+                         + 0.45f * std::sin(angle * 17.0f - distanceFromCenter * 0.018f);
+            volcanoHeight *= 1.0f + ridges * 0.045f * ridgeBand;
+
+            float localCraterRadius = craterRadius *
+                (1.0f + 0.09f * std::sin(angle * 5.0f + 0.4f));
+            float craterMask = glm::smoothstep(localCraterRadius + craterBlend,
+                                                localCraterRadius,
+                                                distanceFromCenter);
             float craterHeight = -craterDepth * craterMask;
             float y = noiseHeight + volcanoHeight + craterHeight;
+
+            // Bring the outermost terrain gently down before it reaches the mesh
+            // boundary. The shader fog completes the fade, so no square cliff is
+            // visible from the establishing shot.
+            float edgeDistance = halfWidth - glm::max(std::abs(x), std::abs(z));
+            float edgeFade = glm::smoothstep(0.0f, m_width * 0.11f, edgeDistance);
+            const float outerGroundY = -8.0f;
+            y = outerGroundY + (y - outerGroundY) * edgeFade;
 
             // River Logic
             float sNoise = std::sin(zFromVolcano * 0.02f + 1.37f);
@@ -142,17 +210,73 @@ void Volcano::generateGeometry() {
             float forwardMask = glm::smoothstep(-1.0f, 0.00f, zFromVolcano);
 
             float riverMask = lateralMask * radialMask * forwardMask;
+
+            // Grass begins around the volcano base instead of climbing toward
+            // the crater. Downstream it opens into an intentionally broad damp
+            // plain that reaches almost all the way across the terrain.
+            const float grassStartRadius = m_stats.baseRadius * 0.76f;
+            float riverProgress = glm::clamp(
+                (distanceFromCenter - grassStartRadius)
+                / (riverOuterRadius - grassStartRadius), 0.0f, 1.0f);
+            float grassHalfWidth = glm::mix(335.0f, 640.0f, riverProgress);
+            float grassLateral = 1.0f - glm::smoothstep(
+                grassHalfWidth, grassHalfWidth + 105.0f, riverDistanceX);
+            float grassRadial = glm::smoothstep(grassStartRadius,
+                                                 grassStartRadius + 110.0f,
+                                                 distanceFromCenter)
+                              * (1.0f - glm::smoothstep(riverOuterRadius + 240.0f,
+                                                        riverOuterRadius + 400.0f,
+                                                        distanceFromCenter));
+            float grassMask = grassLateral * grassRadial * forwardMask;
             
             y -= riverMask * riverDepth;
 
-            // --- CRITICAL FIX: Store to TEMP vectors first ---
+            // Record the generated surface height at the river mouth. Particle
+            // effects and vegetation use this instead of an approximate negative
+            // trench depth, which could otherwise place them below the terrain.
+            float endDx = x - m_stats.riverEndXZ.x;
+            float endDz = z - m_stats.riverEndXZ.y;
+            float endDistance2 = endDx * endDx + endDz * endDz;
+            if (endDistance2 < closestRiverEndDistance2) {
+                closestRiverEndDistance2 = endDistance2;
+                m_stats.riverEndY = y;
+            }
+
+            // Store synchronized grid attributes before triangle unrolling.
             tempGridPositions.emplace_back(x, y, z);
             tempGridTexCoords.emplace_back(
                 static_cast<float>(j) / (m_gridSize - 1),
                 static_cast<float>(i) / (m_gridSize - 1)
             );
             tempGridRiverMasks.push_back(riverMask);       // Store cleanly
+            tempGridGrassMasks.push_back(grassMask);
             tempGridDist.push_back(distanceFromCenter);    // Store cleanly
+        }
+    }
+
+    // Keep only the height component for inexpensive particle/terrain contact
+    // queries. The render mesh remains exactly the same resolution.
+    m_surfaceHeights.resize(tempGridPositions.size());
+    for (std::size_t i = 0; i < tempGridPositions.size(); ++i) {
+        m_surfaceHeights[i] = tempGridPositions[i].y;
+    }
+
+    // Central differences produce smooth per-vertex normals. The old version
+    // assigned one normal per triangle, which made the 512x512 height field look
+    // visibly faceted under moonlight.
+    for (int i = 0; i < m_gridSize; ++i) {
+        for (int j = 0; j < m_gridSize; ++j) {
+            int leftJ = glm::max(0, j - 1);
+            int rightJ = glm::min(m_gridSize - 1, j + 1);
+            int backI = glm::max(0, i - 1);
+            int frontI = glm::min(m_gridSize - 1, i + 1);
+
+            const glm::vec3 tangentX = tempGridPositions[i * m_gridSize + rightJ]
+                                     - tempGridPositions[i * m_gridSize + leftJ];
+            const glm::vec3 tangentZ = tempGridPositions[frontI * m_gridSize + j]
+                                     - tempGridPositions[backI * m_gridSize + j];
+            tempGridNormals[i * m_gridSize + j] =
+                glm::normalize(glm::cross(tangentZ, tangentX));
         }
     }
 
@@ -162,15 +286,19 @@ void Volcano::generateGeometry() {
     
     // Clear the final member vectors so we start fresh
     m_positions.clear();
+    m_normals.clear();
     m_texCoords.clear();
     m_riverMasks.clear();     // <--- Crucial clean-up
+    m_grassMasks.clear();
     m_distFromCenter.clear(); // <--- Crucial clean-up
 
     // We can reserve size to speed it up (6 vertices per grid square)
     size_t numIndices = (m_gridSize - 1) * (m_gridSize - 1) * 6;
     m_positions.reserve(numIndices);
+    m_normals.reserve(numIndices);
     m_texCoords.reserve(numIndices);
     m_riverMasks.reserve(numIndices);
+    m_grassMasks.reserve(numIndices);
     m_distFromCenter.reserve(numIndices);
 
     for (int i=0; i<m_gridSize - 1; ++i) {
@@ -185,8 +313,10 @@ void Volcano::generateGeometry() {
             // This guarantees they are always perfectly synced.
             auto pushVertex = [&](int index) {
                 m_positions.push_back(tempGridPositions[index]);
+                m_normals.push_back(tempGridNormals[index]);
                 m_texCoords.push_back(tempGridTexCoords[index]);
                 m_riverMasks.push_back(tempGridRiverMasks[index]); // Match mask to pos
+                m_grassMasks.push_back(tempGridGrassMasks[index]);
                 m_distFromCenter.push_back(tempGridDist[index]);   // Match dist to pos
             };
 

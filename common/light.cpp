@@ -9,27 +9,30 @@
 
 using namespace glm;
 
-Light::Light(GLFWwindow* window, 
+Light::Light(GLFWwindow* window,
              glm::vec4 init_La,
              glm::vec4 init_Ld,
              glm::vec4 init_Ls,
-             glm::vec3 init_position) : window(window) {
+             glm::vec3 init_position,
+             glm::vec3 init_target,
+             float orthoHalfExtent,
+             float init_nearPlane,
+             float init_farPlane) : window(window) {
     La = init_La;
     Ld = init_Ld;
     Ls = init_Ls;
     lightPosition_worldspace = init_position;
+    targetPosition = init_target;
 
     // setting near and far plane affects the detail of the shadow
-    nearPlane = 1.0;
-    farPlane = 30.0;
+    nearPlane = init_nearPlane;
+    farPlane = init_farPlane;
 
     direction = normalize(targetPosition - lightPosition_worldspace);
 
     lightSpeed = 0.1f;
-    targetPosition = glm::vec3(0.0, 0.0, -5.0);
 
-
-    projectionMatrix = ortho(-10.0f, 10.0f, -10.0f, 10.0f, nearPlane, farPlane);
+    projectionMatrix = ortho(-orthoHalfExtent, orthoHalfExtent, -orthoHalfExtent, orthoHalfExtent, nearPlane, farPlane);
 }
 
 
@@ -100,25 +103,32 @@ void Light::update() {
 
 }
 
-// In light.cpp
-// In light.cpp
-void Light::uploadLight(GLuint shaderProgram, int lightIndex) {
+LightUniformLocations Light::findUniformLocations(GLuint shaderProgram,
+                                                  int lightIndex) {
     // Build uniform names with index
     std::string LaName = "light[" + std::to_string(lightIndex) + "].La";
     std::string LdName = "light[" + std::to_string(lightIndex) + "].Ld";
     std::string LsName = "light[" + std::to_string(lightIndex) + "].Ls";
-    std::string posName = "light[" + std::to_string(lightIndex) + "].position";
-    
-    // Upload using member variables (this->La, this->Ld, this->Ls)
-    glUniform4f(glGetUniformLocation(shaderProgram, LaName.c_str()), 
+    std::string posName = "light[" + std::to_string(lightIndex) + "].lightPosition_worldspace";
+
+    LightUniformLocations locations;
+    locations.ambient = glGetUniformLocation(shaderProgram, LaName.c_str());
+    locations.diffuse = glGetUniformLocation(shaderProgram, LdName.c_str());
+    locations.specular = glGetUniformLocation(shaderProgram, LsName.c_str());
+    locations.position = glGetUniformLocation(shaderProgram, posName.c_str());
+    return locations;
+}
+
+void Light::uploadLight(const LightUniformLocations& locations) const {
+    glUniform4f(locations.ambient,
                 this->La.r, this->La.g, this->La.b, this->La.a);
-    glUniform4f(glGetUniformLocation(shaderProgram, LdName.c_str()), 
+    glUniform4f(locations.diffuse,
                 this->Ld.r, this->Ld.g, this->Ld.b, this->Ld.a);
-    glUniform4f(glGetUniformLocation(shaderProgram, LsName.c_str()), 
+    glUniform4f(locations.specular,
                 this->Ls.r, this->Ls.g, this->Ls.b, this->Ls.a);
-    glUniform3f(glGetUniformLocation(shaderProgram, posName.c_str()), 
+    glUniform3f(locations.position,
                 lightPosition_worldspace.x,
-                lightPosition_worldspace.y, 
+                lightPosition_worldspace.y,
                 lightPosition_worldspace.z);
 }
 

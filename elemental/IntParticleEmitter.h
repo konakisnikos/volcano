@@ -4,7 +4,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <common/model.h>
-#include <glm/gtx/string_cast.hpp>
 
 //#define USE_PARALLEL_TRANSFORM
 
@@ -49,6 +48,7 @@ public:
     glm::vec3 emitter_pos; //the origin of the emitter
 
     IntParticleEmitter(Drawable* _model, int number);
+    virtual ~IntParticleEmitter();
     void changeParticleNumber(int new_number);
 
     void renderParticles(int time = 0);
@@ -73,4 +73,3 @@ private:
     GLuint scales_buffer;
     GLuint lifes_buffer;
 };
-

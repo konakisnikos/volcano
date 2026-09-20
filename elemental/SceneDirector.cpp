@@ -1,6 +1,7 @@
 #include "SceneDirector.h"
 
 #include <cmath>
+#include <iostream>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glfw3.h>
 #include <common/camera.h>
@@ -17,11 +18,25 @@ SceneDirector::SceneDirector(Camera* camera, Light* moonlight, Volcano* volcano,
       m_lavaStartSeconds(7.0),
       m_lavaTimeSeconds(0.0f),
       m_lastShakeOffset(0.0f),
-      m_hasShakeOffset(false) {}
+      m_hasShakeOffset(false),
+      m_simElapsedSeconds(0.0),
+      m_timeScale(1.0f),
+      m_stage(SimulationStage::Awakening),
+      m_stageStartSeconds(0.0) {}
 
 void SceneDirector::reset(double timeSeconds) {
+    if (m_camera && m_hasShakeOffset) {
+        m_camera->position -= m_lastShakeOffset;
+    }
     m_startTime = timeSeconds;
     m_lastTime = timeSeconds;
+    m_simElapsedSeconds = 0.0;
+    m_lavaTimeSeconds = -1000.0f;
+    m_paused = false;
+    m_stage = SimulationStage::Awakening;
+    m_stageStartSeconds = 0.0;
+    m_lastShakeOffset = glm::vec3(0.0f);
+    m_hasShakeOffset = false;
 }
 
 void SceneDirector::setPaused(bool paused) {
@@ -36,16 +51,61 @@ float SceneDirector::getLavaTimeSeconds() const {
     return m_lavaTimeSeconds;
 }
 
+void SceneDirector::setTimeScale(float scale) {
+    m_timeScale = glm::clamp(scale, 0.0f, 8.0f);
+}
+
+float SceneDirector::getTimeScale() const {
+    return m_timeScale;
+}
+
+double SceneDirector::getSimSeconds() const {
+    return m_simElapsedSeconds;
+}
+
+float SceneDirector::getScaledDeltaSeconds(float realDeltaSeconds) const {
+    return m_paused ? 0.0f : realDeltaSeconds * m_timeScale;
+}
+
+void SceneDirector::transitionTo(SimulationStage stage) {
+    if (stage == m_stage) return;
+    m_stage = stage;
+    m_stageStartSeconds = m_simElapsedSeconds;
+    std::cout << "Simulation stage -> " << getStageName() << std::endl;
+}
+
+SimulationStage SceneDirector::getStage() const {
+    return m_stage;
+}
+
+const char* SceneDirector::getStageName() const {
+    switch (m_stage) {
+        case SimulationStage::Awakening: return "Awakening";
+        case SimulationStage::LavaFlowing: return "Lava flowing";
+        case SimulationStage::SmokeAndAsh: return "Smoke and ash";
+        case SimulationStage::CloudFormation: return "Cloud formation";
+        case SimulationStage::Raining: return "Raining";
+        case SimulationStage::RiverFilling: return "River filling";
+        case SimulationStage::VegetationGrowing: return "Vegetation growing";
+        case SimulationStage::LightningStorm: return "Lightning storm";
+        case SimulationStage::ElectrifiedRiver: return "Electrified river";
+        case SimulationStage::CalmNight: return "Calm night";
+        case SimulationStage::Complete: return "Living landscape";
+    }
+    return "Unknown";
+}
+
+float SceneDirector::getStageElapsedSeconds() const {
+    return static_cast<float>(m_simElapsedSeconds - m_stageStartSeconds);
+}
+
 void SceneDirector::update(double timeSeconds, float deltaSeconds) {
     if (m_startTime < 0.0) {
         reset(timeSeconds);
     }
 
-    if (m_paused) {
-        m_lastTime = timeSeconds;
-        return;
-    }
-
+    // The camera can still look/move freely while the simulation is paused;
+    // only the domino-chain clock below is frozen.
     if (m_camera && m_hasShakeOffset) {
         m_camera->position -= m_lastShakeOffset;
         m_lastShakeOffset = glm::vec3(0.0f);
@@ -56,12 +116,20 @@ void SceneDirector::update(double timeSeconds, float deltaSeconds) {
         m_camera->update();
     }
 
-    double elapsed = timeSeconds - m_startTime;
     m_lastTime = timeSeconds;
+
+    if (!m_paused) {
+        m_simElapsedSeconds += static_cast<double>(deltaSeconds) * static_cast<double>(m_timeScale);
+    }
+
+    double elapsed = m_simElapsedSeconds;
 
     m_lavaTimeSeconds = -1000.0f;
     if (elapsed >= m_lavaStartSeconds) {
         m_lavaTimeSeconds = static_cast<float>(elapsed - m_lavaStartSeconds);
+        if (m_stage == SimulationStage::Awakening) {
+            transitionTo(SimulationStage::LavaFlowing);
+        }
     }
 
     if (m_camera && elapsed >= m_shakeStartSeconds && elapsed < m_lavaStartSeconds) {

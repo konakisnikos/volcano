@@ -327,6 +327,7 @@ void indexVBO(
 }
 
 Drawable::Drawable(string path) {
+    m_useIndexing = true; // OBJ/VTP meshes get de-duplicated indexing (this ctor left it uninitialized)
     if (path.substr(path.size() - 3, 3) == "obj") {
         loadOBJWithTiny(path.c_str(), vertices, uvs, normals, VEC_UINT_DEFAULT_VALUE);
     } else if (path.substr(path.size() - 3, 3) == "vtp") {
@@ -349,7 +350,10 @@ Drawable::~Drawable() {
     glDeleteBuffers(1, &uvsVBO);
     glDeleteBuffers(1, &normalsVBO);
     glDeleteBuffers(1, &elementVBO);
-    glDeleteBuffers(1, &VAO);
+    if (!m_extraVBOs.empty()) {
+        glDeleteBuffers(static_cast<GLsizei>(m_extraVBOs.size()), &m_extraVBOs[0]);
+    }
+    glDeleteVertexArrays(1, &VAO);
 }
 
 void Drawable::bind() {
@@ -368,7 +372,7 @@ void Drawable::createContext() {
     if (m_useIndexing) {
         // STANDARD MODE (For OBJ files):
         // Uses the helper to remove duplicates and create optimized indices.
-        // This is what was causing your stripe bug because it re-ordered the vertices!
+        // Indexing may reorder vertices, so custom terrain attributes use raw mode.
         indexVBO(vertices, uvs, normals, indices, indexedVertices, indexedUVS, indexedNormals);
     } 
     else {
@@ -434,17 +438,18 @@ void Drawable::addExtraAttribute(int layoutIndex, int componentCount, const std:
     // CHECK THIS VARIABLE NAME! Is it 'VAO', 'm_VAO', 'vao'?
     glBindVertexArray(VAO); 
 
-    // 2. CREATE A NEW BUFFER FOR THE DATA
+    // Create a dedicated buffer for the additional attribute.
     GLuint buffer;
     glGenBuffers(1, &buffer);
+    m_extraVBOs.push_back(buffer);
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
     glBufferData(GL_ARRAY_BUFFER, data.size() * sizeof(float), &data[0], GL_STATIC_DRAW);
 
-    // 3. TELL OPENGL "THIS IS DATA LANE #3" (or #4)
+    // Attach it to the requested vertex-attribute location.
     glEnableVertexAttribArray(layoutIndex);
     glVertexAttribPointer(layoutIndex, componentCount, GL_FLOAT, GL_FALSE, 0, (void*)0);
 
-    // 4. CLOSE THE DOOR
+    // Leave a neutral binding state for the next setup operation.
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 }

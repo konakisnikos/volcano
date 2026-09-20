@@ -1,0 +1,38 @@
+#version 330 core
+
+layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 1) in vec3 vertexNormal_modelspace;
+layout(location = 2) in vec2 aTexCoords;
+layout(location = 3) in float inRiverMask;
+layout(location = 4) in float inDist;
+
+uniform mat4 M;
+uniform mat4 V; // light view matrix
+uniform mat4 P; // light projection matrix
+uniform float u_LavaTime;
+uniform float u_CraterRadius;
+
+// Mirrors the lava-lift displacement in Volcano.vertexshader so the
+// shadow caster matches the geometry that is actually lit and drawn.
+void main() {
+    float speed = 20.0;
+    float flowHead = u_LavaTime * speed;
+    float frontPerturbation = sin(vertexPosition_modelspace.x * 0.10
+                                  + vertexPosition_modelspace.z * 0.025
+                                  - u_LavaTime * 1.4) * 4.0;
+    float flowMask = 1.0 - smoothstep(flowHead + frontPerturbation,
+                                     flowHead + 20.0 + frontPerturbation, inDist);
+    float riverBedMask = smoothstep(0.34, 0.82, inRiverMask);
+    float craterMask = 1.0 - smoothstep(u_CraterRadius * 0.72, u_CraterRadius, inDist);
+    float lavaActive = smoothstep(-0.25, 0.35, u_LavaTime);
+    float lavaPresence = max(riverBedMask * flowMask, craterMask * lavaActive);
+    float liftMask = smoothstep(0.15, 0.85, lavaPresence);
+    float surfaceWave = 0.5 + 0.5 * sin(vertexPosition_modelspace.x * 0.08
+                                        + vertexPosition_modelspace.z * 0.05
+                                        - u_LavaTime * 1.25);
+    float liftAmount = (0.20 + 0.10 * surfaceWave) * liftMask;
+
+    vec3 displacedPosition = vertexPosition_modelspace + vec3(0.0, liftAmount, 0.0);
+
+    gl_Position = P * V * M * vec4(displacedPosition, 1.0);
+}

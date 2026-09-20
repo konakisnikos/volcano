@@ -5,8 +5,46 @@ in vec3 TexCoords;
 out vec4 FragColor;
 
 uniform samplerCube skybox;
+uniform float uLightningFlash;
+uniform float uTime;
+uniform vec3 uMoonDirection;
+uniform float uCalmProgress;
+
+float directionHash(vec3 direction)
+{
+    return fract(sin(dot(direction, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+}
 
 void main()
 {
-    FragColor = texture(skybox, TexCoords);
+    vec3 direction = normalize(TexCoords);
+    vec3 source = texture(skybox, direction).rgb;
+
+    // Pull the strongly blue source cubemap toward a charcoal/indigo night.
+    // Bright texels are treated as stars and receive only a tiny slow twinkle.
+    float sourceLuma = dot(source, vec3(0.2126, 0.7152, 0.0722));
+    vec3 night = mix(vec3(sourceLuma), source, 0.66) * vec3(0.62, 0.68, 0.80);
+    float starMask = smoothstep(0.58, 0.95, max(source.r, max(source.g, source.b)));
+    float twinkle = 0.93 + 0.07 * sin(uTime * (0.55 + directionHash(direction) * 0.8)
+                                      + directionHash(direction * 7.0) * 6.28318);
+    night *= mix(1.0, twinkle, starMask);
+    // Once the storm clears, the existing cubemap stars become more legible;
+    // this is a restrained exposure lift, not a transition to daytime.
+    night += vec3(0.11, 0.14, 0.20) * starMask * uCalmProgress;
+    night *= 1.0 + 0.045 * uCalmProgress;
+
+    // The moon is procedural, so it remains aligned with the actual moonlight.
+    float moonAlignment = dot(direction, normalize(uMoonDirection));
+    float moonDisc = smoothstep(0.99955, 0.99982, moonAlignment);
+    float moonHalo = smoothstep(0.982, 0.99970, moonAlignment) * (1.0 - moonDisc);
+    vec3 moonColor = vec3(0.82, 0.87, 0.93);
+    night += moonColor * (moonDisc * (0.82 + 0.15 * uCalmProgress)
+                          + moonHalo * (0.12 + 0.035 * uCalmProgress));
+
+    // A restrained horizon lift ties the cubemap to the terrain fog.
+    float horizon = 1.0 - smoothstep(-0.08, 0.30, abs(direction.y));
+    night = mix(night, vec3(0.035, 0.045, 0.070), horizon * 0.30);
+
+    vec3 flashColor = vec3(0.50, 0.62, 0.90);
+    FragColor = vec4(night + flashColor * uLightningFlash * 0.20, 1.0);
 }

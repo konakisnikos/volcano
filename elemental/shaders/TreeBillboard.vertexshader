@@ -1,0 +1,42 @@
+#version 330 core
+
+layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 2) in vec2 vertexUV;
+
+uniform mat4 V;
+uniform mat4 P;
+uniform vec3 uTreeBase;
+uniform vec2 uTreeSize;
+uniform vec3 cameraPosition_worldspace;
+uniform float uGrowth;
+uniform float uTime;
+uniform float uSwayPhase;
+
+out vec2 vUV;
+
+void main() {
+    const vec3 worldUp = vec3(0.0, 1.0, 0.0);
+
+    // Cylindrical billboard: face the camera only around the vertical axis.
+    // This keeps the trunk upright even when the camera moves above the terrain.
+    vec3 toCamera = cameraPosition_worldspace - uTreeBase;
+    toCamera.y = 0.0;
+    if (dot(toCamera, toCamera) < 0.0001) toCamera = vec3(0.0, 0.0, 1.0);
+    toCamera = normalize(toCamera);
+    vec3 cameraRight = normalize(cross(worldUp, toCamera));
+
+    float vertical01 = vertexUV.y;
+    float widthGrowth = mix(0.18, 1.0, smoothstep(0.0, 1.0, uGrowth));
+    float localX = vertexPosition_modelspace.x * uTreeSize.x * 0.5 * widthGrowth;
+    float localY = vertical01 * uTreeSize.y * uGrowth;
+
+    // A very small crown sway keeps the billboard alive without bending its root.
+    float breeze = sin(uTime * 0.52 + uSwayPhase) * 0.65
+                 * vertical01 * vertical01 * uGrowth;
+    vec3 worldPosition = uTreeBase
+                       + cameraRight * (localX + breeze)
+                       + worldUp * localY;
+
+    gl_Position = P * V * vec4(worldPosition, 1.0);
+    vUV = vertexUV;
+}

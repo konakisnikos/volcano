@@ -12,10 +12,13 @@ layout (location = 12) in float life;
 
 out vec2 UV;
 out float vs_life;
+flat out float vs_seed;
 //out vec3 normal;
 
 // Values that stay constant for the whole mesh.
 uniform mat4 PV;
+uniform vec2 uShapeScale;
+uniform float uShear;
 
 void main() {
     // vertex position
@@ -24,7 +27,16 @@ void main() {
 
     vs_life = life;
 
+    // Stable per-particle seed.  Using the instance position means neighbouring
+    // billboards do not all have the same outline, without adding another VBO.
+    vec3 particlePosition = aInstanceMatrix[3].xyz;
+    vs_seed = fract(sin(dot(particlePosition, vec3(12.9898, 78.233, 37.719)))
+                    * 43758.5453);
 
-    gl_Position =  PV * aInstanceMatrix * rotationMatrix * vec4(vertexPosition_modelspace * scale, 1);
+
+    vec3 shapedPosition = vertexPosition_modelspace;
+    shapedPosition.xy *= uShapeScale;
+    shapedPosition.x += shapedPosition.y * uShear;
+    gl_Position = PV * aInstanceMatrix * rotationMatrix * vec4(shapedPosition * scale, 1);
 
 }

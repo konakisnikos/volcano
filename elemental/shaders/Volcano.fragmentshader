@@ -1,19 +1,42 @@
 #version 330 core
 
-in vec4 vertex_position_cameraspace;
-in vec4 vertex_normal_cameraspace;
 in vec2 vTexCoord;
 
 in float vRiverMask;
 in float vDist;
+in float vGrassMask;
 
 // REMOVE: in float vModelY;  (doesn't exist)
 in vec3 vWorldPos;
+in vec3 vWorldNormal;
 
 out vec4 fragment_color;
 
 uniform sampler2D uTerrainTexture;
 uniform float u_LavaTime;
+
+// Domino chain (Part B.4a): once the lava front reaches the river end, a cooling
+// boundary travels back toward the crater. -1 means "not cooling yet".
+uniform float u_LavaCoolStart;
+uniform float u_LavaCoolDuration;
+
+// Domino chain (Part B.4c): river channel fills with water as rain falls.
+uniform float u_WaterFill; // 0 = dry riverbed, 1 = fully filled with water
+uniform float u_RainIntensity;
+uniform float u_GrassGrowth;
+uniform float u_RiverInnerRadius;
+uniform float u_RiverOuterRadius;
+uniform float u_CraterRadius;
+uniform vec2 u_CraterCenter;
+uniform float u_LightningFlash;
+uniform float u_ElectricStart;
+uniform float u_ElectricDuration;
+uniform float u_ElectricStrikeDist;
+uniform vec3 cameraPosition_worldspace;
+
+// Shadow mapping (moonlight's depth pass)
+uniform sampler2D u_ShadowMap;
+uniform mat4 u_LightVP;
 
 struct Light {
     vec4 La;
@@ -39,6 +62,12 @@ uniform float uCrackRadius[MAX_CRACKS];   // how far the effect extends
 uniform vec2 uCrackDirXZ[MAX_CRACKS];     // normalized direction in XZ
 uniform float uCrackHalfLen[MAX_CRACKS];  // half length of the segment
 
+#define MAX_SCORCHES 8
+uniform int uScorchCount;
+uniform vec2 uScorchPosXZ[MAX_SCORCHES];
+uniform float uScorchRadius[MAX_SCORCHES];
+uniform float uScorchStrength[MAX_SCORCHES];
+
 // Signed distance from point p to segment [a,b]
 float sdSegment(vec2 p, vec2 a, vec2 b) {
     vec2 pa = p - a;
@@ -62,6 +91,32 @@ float noise1D(float x) {
     float b = hash12(vec2(i + 1.0, 17.0));
     float u = f * f * (3.0 - 2.0 * f);
     return mix(a, b, u);
+}
+
+// Bilinearly interpolated value noise and four inexpensive octaves. This is
+// used only inside visible lava, so it gives organic crust without new assets.
+float noise2D(vec2 p) {
+    vec2 cell = floor(p);
+    vec2 local = fract(p);
+    vec2 blend = local * local * (3.0 - 2.0 * local);
+
+    float n00 = hash12(cell);
+    float n10 = hash12(cell + vec2(1.0, 0.0));
+    float n01 = hash12(cell + vec2(0.0, 1.0));
+    float n11 = hash12(cell + vec2(1.0, 1.0));
+    return mix(mix(n00, n10, blend.x), mix(n01, n11, blend.x), blend.y);
+}
+
+float lavaFbm(vec2 p) {
+    float value = 0.0;
+    float amplitude = 0.55;
+    mat2 rotation = mat2(0.80, -0.60, 0.60, 0.80);
+    for (int octave = 0; octave < 4; ++octave) {
+        value += noise2D(p) * amplitude;
+        p = rotation * p * 2.03 + vec2(7.1, 3.7);
+        amplitude *= 0.48;
+    }
+    return value;
 }
 
 float crackMaskAt(vec2 xz, int i, float tNow) {
@@ -109,37 +164,265 @@ float crackMaskAt(vec2 xz, int i, float tNow) {
     return line * gate * t;
 }
 
+float scorchMaskAt(vec2 xz) {
+    float scorch = 0.0;
+    for (int i = 0; i < uScorchCount; ++i) {
+        float d = length(xz - uScorchPosXZ[i]);
+        float edgeNoise = noise2D(xz * 0.052
+                                + uScorchPosXZ[i] * 0.013 + float(i) * 3.7);
+        float warpedDistance = d / uScorchRadius[i]
+                             + (edgeNoise - 0.5) * 0.22;
+        float irregularBurn = 1.0 - smoothstep(0.48, 1.02, warpedDistance);
+        scorch = max(scorch, irregularBurn * uScorchStrength[i]);
+    }
+    return scorch;
+}
+
+// Returns a [0,1] shadow factor (1 = fully in shadow) for a world-space
+// position, using 3x3 PCF to soften the hard edge of the shadow map lookup.
+float shadowFactor(vec3 worldPos, vec3 normal, vec3 lightDir) {
+    vec4 posLightClip = u_LightVP * vec4(worldPos, 1.0);
+    vec3 projCoords = posLightClip.xyz / posLightClip.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0 ||
+        projCoords.z > 1.0) {
+        return 0.0; // outside the light's frustum: treat as unshadowed
+    }
+
+    float currentDepth = projCoords.z;
+    float bias = max(0.003 * (1.0 - dot(normal, lightDir)), 0.0008);
+
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(textureSize(u_ShadowMap, 0));
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(u_ShadowMap, projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += (currentDepth - bias > pcfDepth) ? 1.0 : 0.0;
+        }
+    }
+    return shadow / 9.0;
+}
+
 void main() {
    float maskValue = texture(uTerrainTexture, vTexCoord).r;
    vec3 darkRock = vec3(0.1, 0.12, 0.15);
    vec3 lightRock = vec3(0.3, 0.35, 0.4);
    vec3 mixedRockColor = mix(darkRock, lightRock, maskValue);
 
-   // Existing river lava
+   // After the river is full, grass spreads through the broad damp corridor.
+   // Noise makes the reveal patchy and flatness keeps it off steep faces.
+   float grassNoise = lavaFbm(vWorldPos.xz * 0.020 + vec2(9.2, -4.7));
+   float grassReveal = smoothstep(0.08, 0.72,
+       u_GrassGrowth * 1.18 - (1.0 - grassNoise) * 0.32);
+   float grassFlatness = smoothstep(0.42, 0.82, normalize(vWorldNormal).y);
+   float grassCoverage = vGrassMask * grassReveal * grassFlatness;
+   vec3 grassDark = vec3(0.045, 0.20, 0.045);
+   vec3 grassLight = vec3(0.16, 0.41, 0.085);
+   vec3 grassColor = mix(grassDark, grassLight,
+                         clamp(grassNoise * 0.78 + maskValue * 0.22, 0.0, 1.0));
+   mixedRockColor = mix(mixedRockColor, grassColor, grassCoverage * 0.96);
+
+   // The crater pool is the lava source. A softly perturbed front prevents the
+   // flow from looking like a perfectly straight progress bar down the channel.
+   vec2 xz = vWorldPos.xz;
    float speed = 20.0;
    float flowHead = u_LavaTime * speed;
-   float flowMask = 1.0 - smoothstep(flowHead, flowHead + 10.0, vDist);
-   float riverBedMask = smoothstep(0.55, 0.9, vRiverMask);
+   float frontPerturbation = sin(vWorldPos.x * 0.10 + vWorldPos.z * 0.025
+                                 - u_LavaTime * 1.4) * 4.0;
+   float flowMask = 1.0 - smoothstep(flowHead + frontPerturbation,
+                                     flowHead + 20.0 + frontPerturbation, vDist);
+   float riverBedMask = smoothstep(0.34, 0.82, vRiverMask);
    float currentLavaPresence = riverBedMask * flowMask;
-   float lavaMixRiver = smoothstep(0.1, 0.5, currentLavaPresence);
+   float lavaMixRiver = smoothstep(0.08, 0.62, currentLavaPresence);
+   float lavaActive = smoothstep(-0.25, 0.35, u_LavaTime);
 
-   // NEW: crack lava
-   vec2 xz = vWorldPos.xz;
+   vec2 craterLocal = xz - u_CraterCenter;
+   float craterAngle = atan(craterLocal.y, craterLocal.x);
+   float craterEdge = u_CraterRadius *
+       (0.86 + 0.055 * sin(craterAngle * 5.0 + u_LavaTime * 0.20)
+             + 0.025 * sin(craterAngle * 11.0 - 0.7));
+   float craterPool = (1.0 - smoothstep(craterEdge * 0.76,
+                                        craterEdge, vDist)) * lavaActive;
+
+   // Cracks use a dim ember edge and a narrow hot core instead of one uniformly
+   // yellow line. This makes their width and direction much easier to read.
    float crack = 0.0;
    for (int i = 0; i < uCrackCount; ++i) {
        crack = max(crack, crackMaskAt(xz, i, u_LavaTime));
    }
-   float lavaMixCrack = smoothstep(0.2, 0.8, crack);
+   float crackEmber = smoothstep(0.06, 0.50, crack);
+   float crackCore = smoothstep(0.58, 0.94, crack);
+   float lavaMixCrack = crackEmber;
 
-   float lavaMix = clamp(max(lavaMixRiver, lavaMixCrack), 0.0, 1.0);
+   float lavaMix = clamp(max(max(lavaMixRiver, lavaMixCrack), craterPool), 0.0, 1.0);
+   float coolingProgress = 0.0;
+   float coolingCrustMask = 0.0;
 
-   vec3 lavaBase = vec3(1.0, 0.4, 0.0);
-   vec3 lavaHot  = vec3(1.0, 0.9, 0.2);
+   // Cool from the far end back toward the crater. vDist is the same radial
+   // coordinate used for lava travel; a little noise keeps the boundary from
+   // looking like a perfectly straight cut across the river.
+   if (u_LavaCoolStart >= 0.0) {
+       float coolFade = clamp((u_LavaTime - u_LavaCoolStart) / u_LavaCoolDuration, 0.0, 1.0);
+       coolingProgress = smoothstep(0.0, 1.0, coolFade);
+       float coolingFront = mix(u_RiverOuterRadius - 3.0,
+                                u_RiverInnerRadius - 18.0,
+                                coolingProgress);
+       float coolingJitter = (lavaFbm(xz * 0.032 + vec2(2.7, -5.1)) - 0.5) * 18.0;
+       float localCooling = smoothstep(coolingFront - 9.0,
+                                       coolingFront + 9.0,
+                                       vDist + coolingJitter);
+       float activeFlow = max(lavaMixRiver, lavaMixCrack);
+       coolingCrustMask = activeFlow * localCooling;
+       // River lava cools after reaching the base, but the deep crater pool
+       // remains hot so the volcano still reads as active.
+       lavaMix = max(craterPool, lavaMix * (1.0 - localCooling));
+   }
 
-   // For cracks, we can make it hotter in the center
-   vec3 finalLavaColor = mix(lavaBase, lavaHot, max(riverBedMask, lavaMixCrack));
+   // Stretch noise along Z and move it downhill to suggest viscous convection.
+   // Values around the middle become narrow hot seams; high islands cool to crust.
+   vec2 lavaCoordinates = vec2(vWorldPos.x * 0.050,
+                               vWorldPos.z * 0.024 - u_LavaTime * 0.18);
+   float broadNoise = lavaFbm(lavaCoordinates);
+   float fineNoise = lavaFbm(lavaCoordinates * 2.35 + vec2(4.0, -2.0));
+   float convection = clamp(broadNoise * 0.76 + fineNoise * 0.24, 0.0, 1.0);
+   float hotVeins = 1.0 - smoothstep(0.055, 0.17, abs(convection - 0.52));
+   float crust = smoothstep(0.63, 0.82, convection)
+               * (1.0 - crackCore) * 0.55;
+   float lavaPulse = 0.5 + 0.5 * sin(u_LavaTime * 2.1
+                                    + vWorldPos.x * 0.035 + vWorldPos.z * 0.025);
+
+   vec3 lavaCrust = vec3(0.18, 0.028, 0.007);
+   vec3 lavaBase = vec3(0.62, 0.075, 0.008);
+   vec3 lavaOrange = vec3(1.0, 0.28, 0.018);
+   vec3 lavaHot = vec3(1.0, 0.66, 0.10);
+   float heat = clamp(0.20 + hotVeins * 0.58 + crackCore * 0.35
+                      + craterPool * 0.08, 0.0, 1.0);
+   vec3 finalLavaColor = mix(lavaBase, lavaOrange, heat);
+   finalLavaColor = mix(finalLavaColor, lavaHot,
+                        hotVeins * (0.28 + 0.18 * lavaPulse) + crackCore * 0.22);
+   finalLavaColor = mix(finalLavaColor, lavaCrust, crust);
+
+   // Darken the outer part of each fissure while preserving its glowing core.
+   float crackEdge = crackEmber * (1.0 - crackCore);
+   finalLavaColor = mix(finalLavaColor, vec3(0.23, 0.025, 0.004), crackEdge * 0.68);
 
    vec3 finalAlbedo = mix(mixedRockColor, finalLavaColor, lavaMix);
+
+   // The moving glow is replaced by a persistent dark, slightly warm crust.
+   // This visually connects the lava-to-ash transformation instead of making
+   // the flow simply disappear back into the original terrain texture.
+   vec3 cooledLava = mix(vec3(0.065, 0.040, 0.032),
+                         vec3(0.022, 0.025, 0.032), convection);
+   finalAlbedo = mix(finalAlbedo, cooledLava,
+                     coolingCrustMask * (1.0 - craterPool) * 0.88);
+
+   // Lightning leaves an irregular dark center with a warmer charred perimeter.
+   float scorch = scorchMaskAt(xz);
+   float scorchCore = smoothstep(0.30, 0.88, scorch);
+   vec3 charredColor = mix(vec3(0.155, 0.064, 0.020),
+                            vec3(0.045, 0.023, 0.014), scorchCore);
+   finalAlbedo = mix(finalAlbedo, charredColor,
+                     smoothstep(0.04, 0.82, scorch) * 0.84);
+
+   // Rain creates a thin film everywhere, while deeper water appears first in
+   // irregular low spots near the downstream end. As accumulation rises these
+   // pools join up, rather than copying lava's single travelling front.
+   float downstream01 = smoothstep(u_RiverInnerRadius,
+                                   u_RiverOuterRadius, vDist);
+   float basinVariation = 0.5 * sin(xz.x * 0.061 + xz.y * 0.027)
+                        + 0.5 * sin(xz.x * -0.043 + xz.y * 0.071 + 1.7);
+   float basinThreshold = mix(0.72, 0.30, downstream01)
+                        + basinVariation * 0.10;
+   float fillEase = smoothstep(0.0, 1.0, u_WaterFill);
+   float localPool = smoothstep(basinThreshold - 0.07,
+                                basinThreshold + 0.07, fillEase);
+   float runoffFilm = smoothstep(0.01, 0.10, u_WaterFill)
+                    * (0.10 + 0.22 * fillEase);
+   float waterAmount = max(runoffFilm, localPool);
+   float waterMix = waterAmount * riverBedMask * (1.0 - lavaMix);
+
+   float waveA = sin(vWorldPos.x * 0.115 + vWorldPos.z * 0.048
+                     + u_LavaTime * 1.85);
+   float waveB = sin(vWorldPos.x * -0.072 + vWorldPos.z * 0.091
+                     - u_LavaTime * 1.28);
+   float wavePattern = waveA * 0.56 + waveB * 0.44;
+   vec3 waterViewDir = normalize(cameraPosition_worldspace - vWorldPos);
+   float waterFresnel = pow(1.0 - max(dot(normalize(vWorldNormal), waterViewDir), 0.0), 3.0);
+   vec3 waterDeep = vec3(0.020, 0.115, 0.19);
+   vec3 waterMoon = vec3(0.18, 0.40, 0.58);
+   vec3 waterColor = mix(waterDeep, waterMoon,
+                         0.18 + waterFresnel * 0.62 + wavePattern * 0.055);
+   finalAlbedo = mix(finalAlbedo, waterColor, waterMix);
+
+   // Part B.7: lightning + water. A bright front expands in both directions
+   // from the impact distance, followed by thinner flickering paths. The river
+   // mask confines the whole effect to water without extra geometry or assets.
+   float electricEnergy = 0.0;
+   if (u_ElectricStart >= 0.0) {
+       float electricAge = u_LavaTime - u_ElectricStart;
+       float activeWindow = smoothstep(0.0, 0.12, electricAge)
+                          * (1.0 - smoothstep(u_ElectricDuration - 1.8,
+                                              u_ElectricDuration,
+                                              electricAge));
+       float travelledDistance = max(electricAge, 0.0) * 125.0;
+       float alongDistance = abs(vDist - u_ElectricStrikeDist);
+       float expandingFront = 1.0 - smoothstep(9.0, 27.0,
+                                                abs(alongDistance - travelledDistance));
+       float reachedWater = 1.0 - smoothstep(travelledDistance - 12.0,
+                                              travelledDistance + 18.0,
+                                              alongDistance);
+       // A moving contour through fractal noise creates irregular, broken
+       // current paths. Unlike crossing sine waves it cannot form a grid.
+       float currentNoise = lavaFbm(xz * 0.052
+                                    + vec2(electricAge * 0.85,
+                                           -electricAge * 0.48));
+       float movingLevel = 0.50 + 0.075
+                         * sin(vDist * 0.045 - electricAge * 7.5);
+       float noiseContour = 1.0 - smoothstep(0.025, 0.090,
+                                             abs(currentNoise - movingLevel));
+       float sparkBreakup = smoothstep(0.30, 0.72,
+           noise2D(xz * 0.115 + vec2(-electricAge * 2.1,
+                                      electricAge * 1.4)));
+       float thinFilaments = noiseContour * (0.35 + 0.65 * sparkBreakup);
+       float currentPulse = 0.58 + 0.42 * abs(sin(electricAge * 18.0
+                                                  + vDist * 0.055));
+       electricEnergy = waterMix * activeWindow
+                      * (expandingFront * 1.35
+                         + reachedWater * thinFilaments * currentPulse * 0.72
+                         + reachedWater * 0.075);
+
+       vec3 electricWater = mix(vec3(0.08, 0.42, 0.82),
+                                vec3(0.78, 0.94, 1.0),
+                                clamp(expandingFront + thinFilaments * 0.72,
+                                      0.0, 1.0));
+       finalAlbedo = mix(finalAlbedo, electricWater,
+                         clamp(electricEnergy * 0.68, 0.0, 0.88));
+   }
+
+   // Foam/ripples follow the edges of joining puddles and narrow runoff streaks,
+   // not one radial front.
+   float poolEdge = 1.0 - smoothstep(0.018, 0.095,
+                                     abs(fillEase - basinThreshold));
+   float runoffStreak = pow(max(sin(xz.x * 0.15 + xz.y * 0.062
+                                    - u_LavaTime * 2.1), 0.0), 10.0)
+                       * runoffFilm * (1.0 - localPool);
+   float bankFoam = smoothstep(0.24, 0.48, vRiverMask)
+                  * (1.0 - smoothstep(0.60, 0.88, vRiverMask))
+                  * waterAmount;
+   float foam = clamp(max(max(poolEdge * 0.34, runoffStreak * 0.24),
+                          bankFoam * 0.22)
+                      * (0.72 + 0.28 * wavePattern), 0.0, 1.0);
+   finalAlbedo = mix(finalAlbedo, vec3(0.52, 0.62, 0.69), foam);
+
+   // Rain darkens the porous basalt immediately beside the channel before it
+   // becomes submerged, making the transition from dry bed to water readable.
+   float wetBanks = smoothstep(0.05, 0.34, vRiverMask)
+                  * (1.0 - smoothstep(0.48, 0.72, vRiverMask))
+                  * u_RainIntensity * (1.0 - waterMix);
+   finalAlbedo = mix(finalAlbedo, finalAlbedo * vec3(0.56, 0.61, 0.70), wetBanks * 0.72);
+
    vec4 materialKd = vec4(finalAlbedo, 1.0);
 
    // bump (reduce on lava)
@@ -148,33 +431,73 @@ void main() {
    float hRight  = texture(uTerrainTexture, vTexCoord + vec2(offset, 0.0)).r;
    float hTop    = texture(uTerrainTexture, vTexCoord + vec2(0.0, offset)).r;
 
-   float bumpStrength = 5.0 * (1.0 - lavaMix);
+   float bumpStrength = 5.0 * (1.0 - lavaMix) * (1.0 - waterMix); // smooth out once flooded
    float dX = (hCenter - hRight) * bumpStrength;
    float dY = (hCenter - hTop)   * bumpStrength;
 
-   vec3 baseNormal = normalize(vertex_normal_cameraspace.xyz);
-   vec3 bumpNormal = normalize(baseNormal + vec3(dX, dY, 0.0));
-   vec4 N = vec4(bumpNormal, 0.0);
-
-   // lighting
-   vec4 E = normalize(vec4(0, 0, 0, 1) - vertex_position_cameraspace);
-   vec3 lightDir3 = normalize(light[0].lightPosition_worldspace);
-   vec4 L = vec4(lightDir3, 0.0);
+   vec3 baseNormal = normalize(vWorldNormal);
+   vec3 rockNormal = normalize(baseNormal + vec3(dX, dY, 0.0));
+   vec3 waterNormal = normalize(baseNormal + vec3(waveA * 0.085, 0.0,
+                                                   waveB * 0.075));
+   vec3 bumpNormal = normalize(mix(rockNormal, waterNormal, waterMix));
+   // Blinn-Phong in one consistent (world) coordinate space.
+   vec3 N = bumpNormal;
+   vec3 L = normalize(light[0].lightPosition_worldspace - vWorldPos);
+   vec3 V = normalize(cameraPosition_worldspace - vWorldPos);
+   vec3 H = normalize(L + V);
 
    vec4 Ia = light[0].La * Ka;
-   float cosTheta = clamp(dot(N, L), 0, 1);
+   float cosTheta = max(dot(N, L), 0.0);
    vec4 Id = light[0].Ld * materialKd * cosTheta;
 
-   vec4 R = reflect(-L, N);
-   float cosAlpha = clamp(dot(E, R), 0, 1);
-   float specular_factor = pow(cosAlpha, Ns);
+   float specular_factor = pow(max(dot(N, H), 0.0), Ns);
    vec4 Is = light[0].Ls * Ks * specular_factor;
+   float waterSpecular = pow(max(dot(N, H), 0.0), 72.0) * waterMix;
+   vec4 waterHighlight = vec4(vec3(0.34, 0.46, 0.62) * waterSpecular, 0.0);
 
-   float rimFactor = 1.0 - max(dot(E, N), 0.0);
+   // Lava is predominantly emissive; reducing reflected moonlight prevents the
+   // orange surface plus blue direct light from clipping to flat white.
+   float reflectedLight = mix(1.0, 0.24, lavaMix);
+   Id *= reflectedLight;
+   Is *= reflectedLight;
+
+   float rimFactor = 1.0 - max(dot(V, N), 0.0);
    rimFactor = pow(rimFactor, 3.0);
    vec4 rimColor = light[0].Ld * 1.5 * rimFactor;
 
-   vec3 emission = finalLavaColor * lavaMix * 0.8;
+   // Emission is deliberately stronger than direct moonlight: this is the
+   // inexpensive glow technique used for the assignment (no costly HDR bloom).
+   vec3 emission = finalLavaColor * lavaMix
+                 * (0.26 + 0.18 * hotVeins + 0.12 * crackCore + 0.05 * lavaPulse);
+   // This is a cheap sky/moon reflection term, not self-illumination. It keeps
+   // water readable under the deliberately low night ambient without HDR.
+   vec3 waterReflection = waterColor * waterMix
+                        * (0.18 + 0.20 * waterFresnel
+                           + 0.045 * max(wavePattern, 0.0));
+   vec3 electricEmission = vec3(0.18, 0.58, 1.0) * electricEnergy * 0.92;
+   // A very small sky-bounce term keeps steep channel walls from collapsing
+   // into pitch-black shapes under the single moon key light.
+   float steepChannel = riverBedMask
+                      * (1.0 - clamp(abs(N.y), 0.0, 1.0));
+   vec3 channelBounce = vec3(0.018, 0.023, 0.042) * steepChannel;
 
-   fragment_color = Ia + Id + Is + rimColor + vec4(emission, 0.0);
+   // Ambient and lava glow are unaffected by shadow (ambient models bounce
+   // light; lava self-illuminates), only direct light contributions are.
+   float shadow = shadowFactor(vWorldPos, bumpNormal, L);
+   vec3 lightning = vec3(0.16, 0.22, 0.36) * u_LightningFlash;
+   fragment_color = Ia + (1.0 - shadow) * (Id + Is + rimColor + waterHighlight)
+                    + vec4(emission + waterReflection + electricEmission + channelBounce
+                           + lightning * materialKd.rgb, 0.0);
+
+   // The procedural plane is finite. A restrained distance/boundary fog blends
+   // only its remote perimeter into the night horizon, while leaving the old
+   // terrain texture and the foreground lighting untouched.
+   float cameraDistance = length(cameraPosition_worldspace - vWorldPos);
+   float distanceFog = smoothstep(1450.0, 1950.0, cameraDistance) * 0.62;
+   float edgeCoordinate = max(abs(vWorldPos.x), abs(vWorldPos.z)) / 675.0;
+   float boundaryFog = smoothstep(0.86, 1.0, edgeCoordinate)
+                     * smoothstep(900.0, 1450.0, cameraDistance);
+   float terrainFog = clamp(max(distanceFog, boundaryFog), 0.0, 1.0);
+   vec3 horizonColor = vec3(0.010, 0.010, 0.115);
+   fragment_color.rgb = mix(fragment_color.rgb, horizonColor, terrainFog);
 }

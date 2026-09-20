@@ -12,12 +12,22 @@ public:
     Skybox(const std::vector<std::string>& faces);
     ~Skybox();
 
-    void Draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix);
+    void Draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix,
+              float lightningFlash = 0.0f,
+              float timeSeconds = 0.0f,
+              const glm::vec3& moonDirection = glm::vec3(-0.4f, 0.65f, -0.65f),
+              float calmProgress = 0.0f);
 
 private:
     Drawable *m_drawable;
     GLuint m_cubemapTexture;
     GLuint m_shaderProgram;
+    GLint m_viewLocation;
+    GLint m_projectionLocation;
+    GLint m_flashLocation;
+    GLint m_timeLocation;
+    GLint m_moonLocation;
+    GLint m_calmLocation;
 
     void loadCubemap(const std::vector<std::string>& faces);
     void setupMesh();

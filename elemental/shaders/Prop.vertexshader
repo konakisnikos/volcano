@@ -1,0 +1,52 @@
+#version 330 core
+
+layout(location = 0) in vec3 vertexPosition_modelspace;
+layout(location = 1) in vec3 vertexNormal_modelspace;
+// These attributes are enabled only on the combined grass mesh. Other prop
+// VAOs leave them disabled and use the regular model transform below.
+layout(location = 3) in float inGrassBaseY;
+layout(location = 4) in float inGrassThreshold;
+// Flower VAOs provide a model matrix at locations 5-8 and a colour at 9. The
+// uniform branch keeps the combined grass mesh simple and leaves those disabled.
+layout(location = 5) in mat4 inInstanceMatrix;
+layout(location = 9) in vec3 inInstanceColor;
+
+uniform mat4 M;
+uniform mat4 V;
+uniform mat4 P;
+uniform int uGrassPass;
+uniform int uInstancedPass;
+uniform float uGrassGrowth;
+uniform float uTime;
+uniform vec3 uColor;
+
+out vec3 vWorldNormal;
+out vec3 vWorldPos;
+out float vGrassVisibility;
+out vec3 vSurfaceColor;
+
+void main() {
+    mat4 objectMatrix = uInstancedPass != 0 ? inInstanceMatrix : M;
+    vec4 worldPosition = objectMatrix * vec4(vertexPosition_modelspace, 1.0);
+    vSurfaceColor = uInstancedPass != 0 ? inInstanceColor : uColor;
+    vGrassVisibility = 1.0;
+    if (uGrassPass != 0) {
+        float growth = smoothstep(inGrassThreshold,
+                                  inGrassThreshold + 0.18,
+                                  uGrassGrowth);
+        float fullHeight = worldPosition.y - inGrassBaseY;
+        worldPosition.y = inGrassBaseY + fullHeight * growth;
+
+        // Only the upper part bends, leaving the root fixed to the terrain.
+        float tipWeight = clamp(fullHeight / 8.0, 0.0, 1.0);
+        float breeze = sin(uTime * 0.85
+                         + vertexPosition_modelspace.x * 0.021
+                         + vertexPosition_modelspace.z * 0.035);
+        worldPosition.x += breeze * 0.42 * tipWeight * growth;
+        vGrassVisibility = growth;
+    }
+    gl_Position = P * V * worldPosition;
+    vWorldPos = worldPosition.xyz;
+    vWorldNormal = normalize(mat3(transpose(inverse(objectMatrix)))
+                           * vertexNormal_modelspace);
+}
