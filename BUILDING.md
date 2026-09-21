@@ -42,10 +42,13 @@ cmake --build build -j4
 ## Run
 
 ```sh
-./build/elemental --windowed
+./build/elemental
 ```
 
 Without `--windowed`, the program uses the primary monitor in fullscreen mode.
+Fullscreen is recommended for presentation on macOS because its windowed
+OpenGL compositor can pace otherwise fast frames unevenly. Use `--windowed`
+for development and automated screenshots.
 Runtime shader and asset paths are compiled from the source directory, so the
 executable can be launched from either the repository root or `build/`.
 

@@ -28,7 +28,7 @@ Dear ImGui time controller.
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j4
-./build/elemental --windowed
+./build/elemental
 ```
 
 Dear ImGui is enabled by default and is downloaded by CMake's `FetchContent` on
@@ -68,7 +68,10 @@ development and final verification:
 
 Valid stages are `awakening`, `lava`, `ash`, `cloud`, `rain`, `river`,
 `vegetation`, `storm`, `electric`, `calm`, and `complete`.
-Add `--report-performance` to print the run's average uncapped frame rate.
+Add `--report-performance` to print the uncapped average frame rate together
+with p95, p99 and maximum frame times. On macOS, use fullscreen for the final
+presentation: the deprecated windowed OpenGL path can have uneven compositor
+frame pacing even when the renderer has ample performance headroom.
 
 ## Code map
 

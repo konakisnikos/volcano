@@ -1,5 +1,6 @@
 // Include C++ headers
 #include <iostream>
+#include <algorithm>
 #include <string>
 #include <vector>
 #include <stdio.h>
@@ -702,6 +703,8 @@ void mainLoop()
     double lastTime = glfwGetTime();
     const double performanceStartTime = lastTime;
     unsigned long long renderedFrameCount = 0;
+    std::vector<float> frameTimesMs;
+    if (gReportPerformance) frameTimesMs.reserve(4096);
     bool firstFrameDiagnostics = true;
 
     do
@@ -709,6 +712,9 @@ void mainLoop()
         double currentTime = glfwGetTime();
         float deltaTime = float(currentTime - lastTime);
         lastTime = currentTime;
+        if (gReportPerformance && renderedFrameCount > 0) {
+            frameTimesMs.push_back(deltaTime * 1000.0f);
+        }
         int framebufferWidth = W_WIDTH;
         int framebufferHeight = W_HEIGHT;
         glfwGetFramebufferSize(window, &framebufferWidth, &framebufferHeight);
@@ -1610,6 +1616,25 @@ void mainLoop()
                   << "Performance: " << renderedFrameCount << " frames in "
                   << measuredSeconds << " s (" << averageFps
                   << " average FPS)" << std::endl;
+        if (!frameTimesMs.empty()) {
+            std::sort(frameTimesMs.begin(), frameTimesMs.end());
+            const auto percentile = [&](float fraction) {
+                const std::size_t index = static_cast<std::size_t>(
+                    fraction * static_cast<float>(frameTimesMs.size() - 1));
+                return frameTimesMs[index];
+            };
+            const std::size_t framesOver16Ms = static_cast<std::size_t>(std::count_if(
+                frameTimesMs.begin(), frameTimesMs.end(),
+                [](float milliseconds) { return milliseconds > 16.67f; }));
+            const std::size_t framesOver33Ms = static_cast<std::size_t>(std::count_if(
+                frameTimesMs.begin(), frameTimesMs.end(),
+                [](float milliseconds) { return milliseconds > 33.33f; }));
+            std::cout << "Frame time: p95 " << percentile(0.95f)
+                      << " ms, p99 " << percentile(0.99f)
+                      << " ms, max " << frameTimesMs.back() << " ms; "
+                      << framesOver16Ms << " frames >16.7 ms, "
+                      << framesOver33Ms << " frames >33.3 ms" << std::endl;
+        }
     }
 }
 
