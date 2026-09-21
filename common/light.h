@@ -6,6 +6,7 @@ struct LightUniformLocations {
     GLint diffuse = -1;
     GLint specular = -1;
     GLint position = -1;
+    GLint direction = -1;
 };
 
 class Light {

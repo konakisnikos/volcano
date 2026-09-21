@@ -43,6 +43,7 @@ struct Light {
     vec4 Ld;
     vec4 Ls;
     vec3 lightPosition_worldspace;
+    vec3 lightDirection_worldspace;
 };
 uniform Light light[2];
 
@@ -442,7 +443,10 @@ void main() {
    vec3 bumpNormal = normalize(mix(rockNormal, waterNormal, waterMix));
    // Blinn-Phong in one consistent (world) coordinate space.
    vec3 N = bumpNormal;
-   vec3 L = normalize(light[0].lightPosition_worldspace - vWorldPos);
+   // Lab 6 directional-light convention: Light::direction points along the
+   // moon rays (source -> scene), so the surface-to-light vector is its inverse.
+   // The same direction also constructs the orthographic shadow view.
+   vec3 L = normalize(-light[0].lightDirection_worldspace);
    vec3 V = normalize(cameraPosition_worldspace - vWorldPos);
    vec3 H = normalize(L + V);
 

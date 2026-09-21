@@ -110,12 +110,14 @@ LightUniformLocations Light::findUniformLocations(GLuint shaderProgram,
     std::string LdName = "light[" + std::to_string(lightIndex) + "].Ld";
     std::string LsName = "light[" + std::to_string(lightIndex) + "].Ls";
     std::string posName = "light[" + std::to_string(lightIndex) + "].lightPosition_worldspace";
+    std::string dirName = "light[" + std::to_string(lightIndex) + "].lightDirection_worldspace";
 
     LightUniformLocations locations;
     locations.ambient = glGetUniformLocation(shaderProgram, LaName.c_str());
     locations.diffuse = glGetUniformLocation(shaderProgram, LdName.c_str());
     locations.specular = glGetUniformLocation(shaderProgram, LsName.c_str());
     locations.position = glGetUniformLocation(shaderProgram, posName.c_str());
+    locations.direction = glGetUniformLocation(shaderProgram, dirName.c_str());
     return locations;
 }
 
@@ -130,6 +132,8 @@ void Light::uploadLight(const LightUniformLocations& locations) const {
                 lightPosition_worldspace.x,
                 lightPosition_worldspace.y,
                 lightPosition_worldspace.z);
+    glUniform3f(locations.direction,
+                direction.x, direction.y, direction.z);
 }
 
 

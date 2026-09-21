@@ -21,13 +21,14 @@ struct Light {
     vec4 Ld;
     vec4 Ls;
     vec3 lightPosition_worldspace;
+    vec3 lightDirection_worldspace;
 };
 uniform Light light[2];
 
 void main() {
     if (uGrassPass != 0 && vGrassVisibility < 0.025) discard;
 
-    vec3 lightDir = normalize(light[0].lightPosition_worldspace - vWorldPos);
+    vec3 lightDir = normalize(-light[0].lightDirection_worldspace);
     vec3 viewDir = normalize(cameraPosition_worldspace - vWorldPos);
     vec3 halfDir = normalize(lightDir + viewDir);
     // Grass blades are two-sided sheets. abs() lights both faces consistently;

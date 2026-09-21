@@ -906,6 +906,9 @@ void mainLoop()
             skybox->Draw(viewMatrix, projectionMatrix,
                          lightningSystem ? lightningSystem->flashStrength() : 0.0f,
                          simulationTime,
+                         // The moon disc is composed for the establishing shot.
+                         // The terrain light and shadow pass still share one
+                         // physically consistent directional-light vector.
                          glm::vec3(-0.35f, 0.15f, -0.925f),
                          calmProgress);
         }

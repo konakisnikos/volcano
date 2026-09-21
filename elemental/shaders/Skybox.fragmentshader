@@ -33,7 +33,9 @@ void main()
     night += vec3(0.11, 0.14, 0.20) * starMask * uCalmProgress;
     night *= 1.0 + 0.045 * uCalmProgress;
 
-    // The moon is procedural, so it remains aligned with the actual moonlight.
+    // The procedural moon is composed for the establishing shot. The terrain's
+    // directional lighting and orthographic shadow pass are kept consistent
+    // with each other independently of this background placement.
     float moonAlignment = dot(direction, normalize(uMoonDirection));
     float moonDisc = smoothstep(0.99955, 0.99982, moonAlignment);
     float moonHalo = smoothstep(0.982, 0.99970, moonAlignment) * (1.0 - moonDisc);
