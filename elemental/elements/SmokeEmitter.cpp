@@ -99,21 +99,23 @@ void SmokeEmitter::updateParticles(float time, float dt, glm::vec3 camera_pos) {
         );
         accel += wind + radial * spreadStrength;
 
-        // Integrate motion
-        particle.velocity += accel * dt;
+        // Semi-implicit Euler integration, matching the Lab 7 sequence:
+        // acceleration changes velocity, then velocity changes position.
+        particle.accel = accel;
+        particle.velocity += particle.accel * dt;
 
         // Gentle drag so old smoke slows down
         //particle.velocity *= 0.985f;
 
         particle.position += particle.velocity * dt;
 
-    // Slow rotation for texture variation
-    particle.rot_angle += 20.0f * turbulence * dt;
+        // Slow rotation for texture variation
+        particle.rot_angle += 20.0f * turbulence * dt;
 
-    // Make smoke puffs grow over time (mass == scale)
-    float t = 1.0f - particle.life;                  // 0 → 1 over lifetime
-    particle.mass = m_minParticleScale
-                  + (m_maxParticleScale - m_minParticleScale) * t;
+        // Make smoke puffs grow over time (mass is the Lab 8 scale field).
+        float t = 1.0f - particle.life;              // 0 → 1 over lifetime
+        particle.mass = m_minParticleScale
+                      + (m_maxParticleScale - m_minParticleScale) * t;
         particle.dist_from_camera = length(particle.position - camera_pos);
 
         auto billRot = calculateBillboardRotationMatrix(particle.position, camera_pos);

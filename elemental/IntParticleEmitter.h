@@ -17,7 +17,15 @@ struct particleAttributes {
     glm::vec3 accel = glm::vec3(0, 0, 0);
     glm::vec3 velocity = glm::vec3(0, 0, 0);
     float life = 0.0f;
+    // The original Lab 8 particle interface calls this value mass. In this
+    // renderer it is passed to the vertex shader as the billboard scale.
     float mass = 0.0f;
+
+    // Visual controls used only by cloud puffs. Keeping them named avoids
+    // hiding non-physics data in acceleration components.
+    float targetScale = 0.0f;
+    float opacityLimit = 1.0f;
+    float animationPhase = 0.0f;
 
     float dist_from_camera = 0.0f; //In case you want to do depth sorting
     bool operator < (const particleAttributes& p) const
