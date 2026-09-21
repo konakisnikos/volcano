@@ -13,6 +13,8 @@ in vec3 vWorldNormal;
 out vec4 fragment_color;
 
 uniform sampler2D uTerrainTexture;
+uniform sampler2D uLavaTexture;
+uniform float uLavaTextureBlend;
 uniform float u_LavaTime;
 
 // Domino chain (Part B.4a): once the lava front reaches the river end, a cooling
@@ -289,6 +291,23 @@ void main() {
    float broadNoise = lavaFbm(lavaCoordinates);
    float fineNoise = lavaFbm(lavaCoordinates * 2.35 + vec2(4.0, -2.0));
    float convection = clamp(broadNoise * 0.76 + fineNoise * 0.24, 0.0, 1.0);
+
+   // Lab 3 texture mapping: two differently scaled UV layers move in separate
+   // directions. Existing FBM offsets the UVs, so the photograph contributes
+   // fine flow detail without replacing the procedural shape or cooling masks.
+   if (uLavaTextureBlend > 0.001 && lavaMix > 0.001) {
+       vec2 uvDistortion = vec2(broadNoise - 0.5, fineNoise - 0.5) * 0.095;
+       vec2 lavaUv = vWorldPos.xz * vec2(0.0016, 0.00115);
+       vec3 overlayA = texture(uLavaTexture,
+           lavaUv + vec2(0.0, -u_LavaTime * 0.012) + uvDistortion).rgb;
+       vec3 overlayB = texture(uLavaTexture,
+           lavaUv * 1.67 + vec2(u_LavaTime * 0.006, -u_LavaTime * 0.008)
+           - uvDistortion * 0.62).rgb;
+       float overlayHeat = dot(mix(overlayA, overlayB, 0.34),
+                               vec3(0.2126, 0.7152, 0.0722));
+       overlayHeat = smoothstep(0.14, 0.77, overlayHeat);
+       convection = mix(convection, overlayHeat, uLavaTextureBlend);
+   }
    float hotVeins = 1.0 - smoothstep(0.055, 0.17, abs(convection - 0.52));
    float crust = smoothstep(0.63, 0.82, convection)
                * (1.0 - crackCore) * 0.55;

@@ -65,6 +65,7 @@ bool gWindowed = false;
 bool gAutoExitOnComplete = false;
 bool gReportPerformance = false;
 bool gUseClassicPhong = true;
+float gLavaTextureBlend = 0.20f;
 float gInitialTimeScale = 1.0f;
 std::string gScreenshotPath;
 bool gScreenshotCaptured = false;
@@ -87,6 +88,7 @@ GLuint volcanoShaderProgram;
 GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
 GLuint terrainTextureSampler;
 GLuint terrainTexture;
+GLuint lavaTexture;
 
 struct VolcanoUniformLocations {
     GLint cameraPosition;
@@ -114,6 +116,8 @@ struct VolcanoUniformLocations {
     GLint materialSpecular;
     GLint materialShininess;
     GLint useClassicPhong;
+    GLint lavaTexture;
+    GLint lavaTextureBlend;
 };
 VolcanoUniformLocations volcanoUniforms;
 LightUniformLocations volcanoLightUniforms;
@@ -430,6 +434,10 @@ void createContext()
     volcanoUniforms.materialShininess = glGetUniformLocation(volcanoShaderProgram, "Ns");
     volcanoUniforms.useClassicPhong = glGetUniformLocation(
         volcanoShaderProgram, "uUseClassicPhong");
+    volcanoUniforms.lavaTexture = glGetUniformLocation(
+        volcanoShaderProgram, "uLavaTexture");
+    volcanoUniforms.lavaTextureBlend = glGetUniformLocation(
+        volcanoShaderProgram, "uLavaTextureBlend");
     volcanoLightUniforms = Light::findUniformLocations(volcanoShaderProgram, 0);
 
     // Depth (shadow) pass uniforms
@@ -450,6 +458,17 @@ void createContext()
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
     float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // depth=1.0 (far) outside the frustum
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Lab 3: a compact version of the existing lava asset is sampled twice
+    // with animated UVs. The procedural shader remains the primary pattern.
+    lavaTexture = loadSOIL(ELEMENTAL_ASSET_DIR "/lava_overlay.png");
+    glBindTexture(GL_TEXTURE_2D, lavaTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
 
     glGenFramebuffers(1, &depthMapFBO);
@@ -688,7 +707,8 @@ void free()
         glDeleteTextures(1, &treeTexture);
         glDeleteTextures(1, &almondTreeTexture);
         glDeleteTextures(1, &terrainTexture);
-        smokeTexture = treeTexture = almondTreeTexture = terrainTexture = 0;
+        glDeleteTextures(1, &lavaTexture);
+        smokeTexture = treeTexture = almondTreeTexture = terrainTexture = lavaTexture = 0;
     }
 
     delete moonlight;
@@ -940,6 +960,13 @@ void mainLoop()
         glActiveTexture(GL_TEXTURE1);
         glBindTexture(GL_TEXTURE_2D, depthMapTexture);
         glUniform1i(volcanoUniforms.shadowMap, 1);
+
+        // Lab 3 animated overlay. Unit 2 is independent of the terrain and
+        // shadow textures, and a zero blend restores the procedural result.
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, lavaTexture);
+        glUniform1i(volcanoUniforms.lavaTexture, 2);
+        glUniform1f(volcanoUniforms.lavaTextureBlend, gLavaTextureBlend);
         mat4 lightVP = moonlight->lightVP();
         glUniformMatrix4fv(volcanoUniforms.lightViewProjection,
                            1, GL_FALSE, &lightVP[0][0]);
@@ -1576,6 +1603,8 @@ void mainLoop()
                 if (ImGui::Button("Reset camera")) camera->resetToEstablishingShot();
 
                 ImGui::Checkbox("Classic Phong (Lab 5)", &gUseClassicPhong);
+                ImGui::SliderFloat("Lava texture (Lab 3)",
+                                   &gLavaTextureBlend, 0.0f, 0.40f, "%.2f");
 
                 ImGui::ProgressBar(waterFill, ImVec2(-1.0f, 0.0f), "River water");
                 ImGui::Separator();
@@ -1770,6 +1799,9 @@ int main(int argc, char** argv)
             gUseClassicPhong = true;
         } else if (argument == "--blinn-phong") {
             gUseClassicPhong = false;
+        } else if (argument == "--lava-texture-blend" && i + 1 < argc) {
+            gLavaTextureBlend = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.0f, 0.40f);
         } else if (argument == "--screenshot" && i + 1 < argc) {
             gScreenshotPath = argv[++i];
         } else if (argument == "--screenshot-stage" && i + 1 < argc) {
