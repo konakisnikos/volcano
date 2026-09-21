@@ -31,6 +31,16 @@ struct particleAttributes {
 
 };
 
+// All per-instance values share one VBO. Keeping them interleaved turns the old
+// eight buffer orphan/upload calls per emitter into one upload per frame, which
+// avoids visible stalls in OpenGL drivers that translate commands to Metal.
+struct ParticleInstanceData {
+    glm::mat4 translation = glm::mat4(1.0f);
+    glm::mat4 rotation = glm::mat4(1.0f);
+    float scale = 1.0f;
+    float life = 0.0f;
+};
+
 
 //ParticleEmitterInt is an interface class. Emitter classes must derive from this one and implement the updateParticles method
 class IntParticleEmitter
@@ -59,17 +69,10 @@ public:
 
 
 private:
-
-    std::vector<glm::mat4> translations;
-    std::vector<glm::mat4> rotations;
-    std::vector<float> scales;
-    std::vector<float> lifes;
+    std::vector<ParticleInstanceData> instanceData;
 
     Drawable* model;
     void configureVAO();
     void bindAndUpdateBuffers();
-    GLuint transformations_buffer;
-    GLuint rotations_buffer;
-    GLuint scales_buffer;
-    GLuint lifes_buffer;
+    GLuint instanceBuffer;
 };
