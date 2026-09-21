@@ -50,6 +50,7 @@ uniform Light light[2];
 uniform vec4 Ka;
 uniform vec4 Ks;
 uniform float Ns;
+uniform bool uUseClassicPhong;
 
 // NEW: crack controls (keep small count)
 #define MAX_CRACKS 8
@@ -449,14 +450,22 @@ void main() {
    vec3 L = normalize(-light[0].lightDirection_worldspace);
    vec3 V = normalize(cameraPosition_worldspace - vWorldPos);
    vec3 H = normalize(L + V);
+   vec3 R = reflect(-L, N);
 
    vec4 Ia = light[0].La * Ka;
    float cosTheta = max(dot(N, L), 0.0);
    vec4 Id = light[0].Ld * materialKd * cosTheta;
 
-   float specular_factor = pow(max(dot(N, H), 0.0), Ns);
+   // Lab 5 uses classic Phong (R dot V). Keep the Blinn halfway-vector
+   // variant available for a direct comparison without duplicating the shader.
+   float specularAlignment = uUseClassicPhong
+       ? max(dot(R, V), 0.0)
+       : max(dot(N, H), 0.0);
+   float terrainExponent = uUseClassicPhong ? 4.0 : Ns;
+   float specular_factor = pow(specularAlignment, terrainExponent);
    vec4 Is = light[0].Ls * Ks * specular_factor;
-   float waterSpecular = pow(max(dot(N, H), 0.0), 72.0) * waterMix;
+   float waterExponent = uUseClassicPhong ? 20.0 : 72.0;
+   float waterSpecular = pow(specularAlignment, waterExponent) * waterMix;
    vec4 waterHighlight = vec4(vec3(0.34, 0.46, 0.62) * waterSpecular, 0.0);
 
    // Lava is predominantly emissive; reducing reflected moonlight prevents the

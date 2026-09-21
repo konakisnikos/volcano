@@ -64,6 +64,7 @@ void resetSimulation(double realTimeSeconds);
 bool gWindowed = false;
 bool gAutoExitOnComplete = false;
 bool gReportPerformance = false;
+bool gUseClassicPhong = true;
 float gInitialTimeScale = 1.0f;
 std::string gScreenshotPath;
 bool gScreenshotCaptured = false;
@@ -112,6 +113,7 @@ struct VolcanoUniformLocations {
     GLint materialAmbient;
     GLint materialSpecular;
     GLint materialShininess;
+    GLint useClassicPhong;
 };
 VolcanoUniformLocations volcanoUniforms;
 LightUniformLocations volcanoLightUniforms;
@@ -198,6 +200,7 @@ GLuint propMLoc, propVLoc, propPLoc, propColorLoc;
 GLuint propGrassPassLoc, propInstancedPassLoc, propGrassGrowthLoc, propTimeLoc;
 GLint propCameraLocation, propLightningLocation, propScorchCountLocation;
 GLint propScorchPositionsLocation, propScorchRadiiLocation, propScorchStrengthsLocation;
+GLint propUseClassicPhongLocation;
 LightUniformLocations propLightUniforms;
 std::vector<PropInstance> floraProps;
 std::vector<glm::mat4> spherePropMatrices;
@@ -366,6 +369,7 @@ void createContext()
     propScorchPositionsLocation = glGetUniformLocation(propShaderProgram, "uScorchPosXZ[0]");
     propScorchRadiiLocation = glGetUniformLocation(propShaderProgram, "uScorchRadius[0]");
     propScorchStrengthsLocation = glGetUniformLocation(propShaderProgram, "uScorchStrength[0]");
+    propUseClassicPhongLocation = glGetUniformLocation(propShaderProgram, "uUseClassicPhong");
     propLightUniforms = Light::findUniformLocations(propShaderProgram, 0);
 
     treeShaderProgram = loadShaders(ELEMENTAL_SHADER_DIR "/TreeBillboard.vertexshader",
@@ -424,6 +428,8 @@ void createContext()
     volcanoUniforms.materialAmbient = glGetUniformLocation(volcanoShaderProgram, "Ka");
     volcanoUniforms.materialSpecular = glGetUniformLocation(volcanoShaderProgram, "Ks");
     volcanoUniforms.materialShininess = glGetUniformLocation(volcanoShaderProgram, "Ns");
+    volcanoUniforms.useClassicPhong = glGetUniformLocation(
+        volcanoShaderProgram, "uUseClassicPhong");
     volcanoLightUniforms = Light::findUniformLocations(volcanoShaderProgram, 0);
 
     // Depth (shadow) pass uniforms
@@ -1323,6 +1329,7 @@ void mainLoop()
         glUniform4f(volcanoUniforms.materialSpecular,
                     volcanoMaterial.Ks.r, volcanoMaterial.Ks.g, volcanoMaterial.Ks.b, volcanoMaterial.Ks.a);
         glUniform1f(volcanoUniforms.materialShininess, volcanoMaterial.Ns);
+        glUniform1i(volcanoUniforms.useClassicPhong, gUseClassicPhong ? 1 : 0);
 
         // draw volcano
         volcano->Draw();
@@ -1336,6 +1343,7 @@ void mainLoop()
             glUniform3fv(propCameraLocation, 1, &camera->position[0]);
             glUniform1f(propLightningLocation,
                         lightningSystem ? lightningSystem->flashStrength() : 0.0f);
+            glUniform1i(propUseClassicPhongLocation, gUseClassicPhong ? 1 : 0);
             glUniform1i(propScorchCountLocation,
                         static_cast<GLint>(scorchPositions.size()));
             if (!scorchPositions.empty()) {
@@ -1567,6 +1575,8 @@ void mainLoop()
                 ImGui::SameLine();
                 if (ImGui::Button("Reset camera")) camera->resetToEstablishingShot();
 
+                ImGui::Checkbox("Classic Phong (Lab 5)", &gUseClassicPhong);
+
                 ImGui::ProgressBar(waterFill, ImVec2(-1.0f, 0.0f), "River water");
                 ImGui::Separator();
                 ImGui::TextDisabled("F1 close  |  C camera  |  P pause  |  [ ] speed  |  R restart");
@@ -1756,6 +1766,10 @@ int main(int argc, char** argv)
             gAutoExitOnComplete = true;
         } else if (argument == "--report-performance") {
             gReportPerformance = true;
+        } else if (argument == "--classic-phong") {
+            gUseClassicPhong = true;
+        } else if (argument == "--blinn-phong") {
+            gUseClassicPhong = false;
         } else if (argument == "--screenshot" && i + 1 < argc) {
             gScreenshotPath = argv[++i];
         } else if (argument == "--screenshot-stage" && i + 1 < argc) {
