@@ -7,9 +7,31 @@ rain and vegetation, then ends with lightning energising the river before the
 landscape settles into a calm night.
 
 The implementation intentionally uses direct, lab-style OpenGL techniques:
-procedural meshes, GLSL shaders, Blinn-Phong lighting, a 2048×2048 shadow map,
-instanced particles and vegetation, alpha-cutout tree billboards, and a small
-Dear ImGui time controller.
+procedural meshes, GLSL shaders, classic Phong lighting, a 2048×2048 shadow
+map, instanced particles and vegetation, alpha-cutout tree billboards, and a
+small Dear ImGui time controller.
+
+## Relation to the graphics labs
+
+- **Lab 3 — textures and blending:** the terrain uses a repeating diffuse map.
+  Lava combines two independently moving samples of `lava_overlay.png`; FBM
+  noise distorts their UVs and the result is blended into the procedural lava
+  pattern. Alpha blending is used for smoke, clouds and rain.
+- **Lab 5 — lighting:** terrain, water and vegetation use ambient, diffuse and
+  specular terms. Classic Phong (`reflect(-L, N)` followed by `R · V`) is the
+  default. The previous Blinn–Phong halfway-vector variant remains available
+  for a direct comparison.
+- **Lab 6 — shadows:** moonlight is a directional light in both the terrain
+  shader and the orthographic depth pass. The 2048×2048 depth texture is sampled
+  with slope-dependent bias and 3×3 PCF.
+- **Lab 7 — motion:** smoke and rain use velocity, acceleration and frame `dt`
+  with semi-implicit Euler integration (`v += a * dt`, then `p += v * dt`).
+- **Lab 8 — particles:** smoke, ash, clouds and rain use emitter classes,
+  particle life and camera-facing billboards. Per-particle transforms are sent
+  in one interleaved instance buffer and rendered with instanced drawing.
+
+Procedural noise, the cubemap, vegetation instancing and ImGui are retained as
+small extensions of those techniques rather than replacements for them.
 
 ## Simulation sequence
 
@@ -72,6 +94,18 @@ Add `--report-performance` to print the uncapped average frame rate together
 with p95, p99 and maximum frame times. On macOS, use fullscreen for the final
 presentation: the deprecated windowed OpenGL path can have uneven compositor
 frame pacing even when the renderer has ample performance headroom.
+
+Lighting and lava comparisons can also be selected from the command line:
+
+```sh
+# Classic Phong is the default; this selects the comparison implementation.
+./build/elemental --blinn-phong
+
+# Range 0.00–0.40. Zero shows the original procedural-only lava.
+./build/elemental --lava-texture-blend 0.20
+```
+
+The same two options are available in the `F1` panel during a run.
 
 ## Code map
 
