@@ -16,7 +16,10 @@ small Dear ImGui time controller.
 - **Lab 3 — textures and blending:** the terrain uses a repeating diffuse map.
   Lava combines two independently moving samples of `lava_overlay.png`; FBM
   noise distorts their UVs and the result is blended into the procedural lava
-  pattern. Alpha blending is used for smoke, clouds and rain.
+  pattern. The river combines two moving samples of `water_normal.png` to add
+  small-scale animated normals while keeping its procedural colour, fill mask
+  and electrified-water effect. Alpha blending is used for smoke, clouds and
+  rain.
 - **Lab 5 — lighting:** terrain, water and vegetation use ambient, diffuse and
   specular terms. Classic Phong (`reflect(-L, N)` followed by `R · V`) is the
   default. The previous Blinn–Phong halfway-vector variant remains available
@@ -103,9 +106,13 @@ Lighting and lava comparisons can also be selected from the command line:
 
 # Range 0.00–0.40. Zero shows the original procedural-only lava.
 ./build/elemental --lava-texture-blend 0.20
+
+# Range 0.00–1.00. Zero shows the original procedural-only water normals.
+./build/elemental --water-normal-strength 0.65
 ```
 
-The same two options are available in the `F1` panel during a run.
+The Phong toggle and both texture strengths are also available in the `F1`
+panel during a run.
 
 ## Code map
 

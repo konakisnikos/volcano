@@ -66,6 +66,7 @@ bool gAutoExitOnComplete = false;
 bool gReportPerformance = false;
 bool gUseClassicPhong = true;
 float gLavaTextureBlend = 0.20f;
+float gWaterNormalStrength = 0.65f;
 float gInitialTimeScale = 1.0f;
 std::string gScreenshotPath;
 bool gScreenshotCaptured = false;
@@ -89,6 +90,7 @@ GLuint projectionMatrixLocation, viewMatrixLocation, modelMatrixLocation;
 GLuint terrainTextureSampler;
 GLuint terrainTexture;
 GLuint lavaTexture;
+GLuint waterNormalTexture;
 
 struct VolcanoUniformLocations {
     GLint cameraPosition;
@@ -118,6 +120,8 @@ struct VolcanoUniformLocations {
     GLint useClassicPhong;
     GLint lavaTexture;
     GLint lavaTextureBlend;
+    GLint waterNormalTexture;
+    GLint waterNormalStrength;
 };
 VolcanoUniformLocations volcanoUniforms;
 LightUniformLocations volcanoLightUniforms;
@@ -438,6 +442,10 @@ void createContext()
         volcanoShaderProgram, "uLavaTexture");
     volcanoUniforms.lavaTextureBlend = glGetUniformLocation(
         volcanoShaderProgram, "uLavaTextureBlend");
+    volcanoUniforms.waterNormalTexture = glGetUniformLocation(
+        volcanoShaderProgram, "uWaterNormalTexture");
+    volcanoUniforms.waterNormalStrength = glGetUniformLocation(
+        volcanoShaderProgram, "uWaterNormalStrength");
     volcanoLightUniforms = Light::findUniformLocations(volcanoShaderProgram, 0);
 
     // Depth (shadow) pass uniforms
@@ -464,6 +472,17 @@ void createContext()
     // with animated UVs. The procedural shader remains the primary pattern.
     lavaTexture = loadSOIL(ELEMENTAL_ASSET_DIR "/lava_overlay.png");
     glBindTexture(GL_TEXTURE_2D, lavaTexture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glGenerateMipmap(GL_TEXTURE_2D);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    // Lab 3: tileable CC0 normal map. It changes only the small-scale water
+    // normals; river colour, fill masks and the electric effect stay procedural.
+    waterNormalTexture = loadSOIL(ELEMENTAL_ASSET_DIR "/water_normal.png");
+    glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
@@ -708,7 +727,9 @@ void free()
         glDeleteTextures(1, &almondTreeTexture);
         glDeleteTextures(1, &terrainTexture);
         glDeleteTextures(1, &lavaTexture);
-        smokeTexture = treeTexture = almondTreeTexture = terrainTexture = lavaTexture = 0;
+        glDeleteTextures(1, &waterNormalTexture);
+        smokeTexture = treeTexture = almondTreeTexture = terrainTexture = lavaTexture =
+            waterNormalTexture = 0;
     }
 
     delete moonlight;
@@ -967,6 +988,13 @@ void mainLoop()
         glBindTexture(GL_TEXTURE_2D, lavaTexture);
         glUniform1i(volcanoUniforms.lavaTexture, 2);
         glUniform1f(volcanoUniforms.lavaTextureBlend, gLavaTextureBlend);
+
+        // Two moving samples are combined in the fragment shader. Strength zero
+        // is the exact procedural-only comparison used by automated captures.
+        glActiveTexture(GL_TEXTURE3);
+        glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
+        glUniform1i(volcanoUniforms.waterNormalTexture, 3);
+        glUniform1f(volcanoUniforms.waterNormalStrength, gWaterNormalStrength);
         mat4 lightVP = moonlight->lightVP();
         glUniformMatrix4fv(volcanoUniforms.lightViewProjection,
                            1, GL_FALSE, &lightVP[0][0]);
@@ -1605,6 +1633,8 @@ void mainLoop()
                 ImGui::Checkbox("Classic Phong (Lab 5)", &gUseClassicPhong);
                 ImGui::SliderFloat("Lava texture (Lab 3)",
                                    &gLavaTextureBlend, 0.0f, 0.40f, "%.2f");
+                ImGui::SliderFloat("Water normals (Lab 3)",
+                                   &gWaterNormalStrength, 0.0f, 1.0f, "%.2f");
 
                 ImGui::ProgressBar(waterFill, ImVec2(-1.0f, 0.0f), "River water");
                 ImGui::Separator();
@@ -1802,6 +1832,9 @@ int main(int argc, char** argv)
         } else if (argument == "--lava-texture-blend" && i + 1 < argc) {
             gLavaTextureBlend = glm::clamp(
                 static_cast<float>(std::atof(argv[++i])), 0.0f, 0.40f);
+        } else if (argument == "--water-normal-strength" && i + 1 < argc) {
+            gWaterNormalStrength = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.0f, 1.0f);
         } else if (argument == "--screenshot" && i + 1 < argc) {
             gScreenshotPath = argv[++i];
         } else if (argument == "--screenshot-stage" && i + 1 < argc) {
