@@ -76,7 +76,10 @@ The stopwatch is hidden by default. Its left, middle and right buttons halve
 simulation speed, pause/resume, and double simulation speed. The second hand
 completes a 30-second simulation-time dial and leaves faint orange afterimages
 at 2× speed and above. It pauses and accelerates with the scene. The dial
-shows the speed; there is no digital time readout. Other controls, including
+shows the speed; there is no digital time readout. A hand holds the watch, and
+the finger above each button briefly presses it for mouse and keyboard input.
+The finger animation uses real time, so it remains visible while paused.
+Other controls, including
 the lava and water sliders, are available separately with F2. The camera uses
 a fixed view of the volcano and river throughout the sequence, apart from the
 brief scripted shake before the eruption.

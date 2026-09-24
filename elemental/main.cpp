@@ -641,6 +641,7 @@ void free()
     sceneDirector = nullptr;
 
 #if defined(ELEMENTAL_ENABLE_IMGUI)
+    if (gOpenGLContextReady) shutdownStopwatchWidget();
     if (gImGuiOpenGLInitialized) {
         ImGui_ImplOpenGL3_Shutdown();
         gImGuiOpenGLInitialized = false;
@@ -726,6 +727,19 @@ static void changeSimulationSpeed(bool faster)
     const float scale = sceneDirector->getTimeScale();
     sceneDirector->setTimeScale(faster ? (scale == 0.0f ? 0.25f : scale * 2.0f)
                                        : scale * 0.5f);
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+    if (gShowHud) triggerStopwatchFinger(
+        faster ? StopwatchAction::Faster : StopwatchAction::Slower);
+#endif
+}
+
+static void toggleSimulationPause()
+{
+    if (!sceneDirector) return;
+    sceneDirector->setPaused(!sceneDirector->isPaused());
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+    if (gShowHud) triggerStopwatchFinger(StopwatchAction::TogglePause);
+#endif
 }
 
 static void handleKeyboardInput(double currentTime)
@@ -735,7 +749,7 @@ static void handleKeyboardInput(double currentTime)
         static bool pKeyWasDown = false;
         bool pKeyIsDown = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
         if (pKeyIsDown && !pKeyWasDown) {
-            sceneDirector->setPaused(!sceneDirector->isPaused());
+            toggleSimulationPause();
         }
         pKeyWasDown = pKeyIsDown;
 
@@ -1130,9 +1144,7 @@ static void renderControls(double currentTime, float waterFill)
                 sceneDirector->isPaused());
             if (action == StopwatchAction::Slower) changeSimulationSpeed(false);
             else if (action == StopwatchAction::Faster) changeSimulationSpeed(true);
-            else if (action == StopwatchAction::TogglePause) {
-                sceneDirector->setPaused(!sceneDirector->isPaused());
-            }
+            else if (action == StopwatchAction::TogglePause) toggleSimulationPause();
         }
     }
 
@@ -1856,6 +1868,7 @@ void initialize()
         throw runtime_error("Failed to initialize the ImGui OpenGL backend");
     }
     gImGuiOpenGLInitialized = true;
+    initializeStopwatchWidget();
 #endif
 
     throwOnOpenGLError("OpenGL initialization");

@@ -8,6 +8,10 @@ enum class StopwatchAction {
     Faster
 };
 
+void initializeStopwatchWidget();
+void shutdownStopwatchWidget();
+void triggerStopwatchFinger(StopwatchAction action);
+
 // Draws the simulation stopwatch and returns the button pressed this frame.
 StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool paused);
 

@@ -1,6 +1,7 @@
 #include "StopwatchWidget.h"
 
 #include <imgui.h>
+#include <common/texture.h>
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,44 @@ namespace {
 
 const float PI = 3.14159265358979323846f;
 const double SECOND_HAND_REVOLUTION_SECONDS = 30.0;
+const double FINGER_PRESS_SECONDS = 0.28;
+GLuint handAtlas = 0;
+double fingerPressStart[3] = {-1.0, -1.0, -1.0};
+
+struct AtlasRegion {
+    float left;
+    float top;
+    float right;
+    float bottom;
+};
+
+void drawHandPart(ImDrawList* draw, const AtlasRegion& source,
+                  const ImVec2& topLeft, const ImVec2& size)
+{
+    if (!handAtlas) return;
+    const float atlasWidth = 1672.0f;
+    const float atlasHeight = 941.0f;
+    draw->AddImage(static_cast<ImTextureID>(handAtlas), topLeft,
+                   ImVec2(topLeft.x + size.x, topLeft.y + size.y),
+                   ImVec2(source.left / atlasWidth, source.top / atlasHeight),
+                   ImVec2(source.right / atlasWidth, source.bottom / atlasHeight));
+}
+
+float smoothStep(float value)
+{
+    value = std::max(0.0f, std::min(1.0f, value));
+    return value * value * (3.0f - 2.0f * value);
+}
+
+float fingerPressAmount(int finger)
+{
+    if (fingerPressStart[finger] < 0.0) return 0.0f;
+    const double age = ImGui::GetTime() - fingerPressStart[finger];
+    if (age < 0.0 || age >= FINGER_PRESS_SECONDS) return 0.0f;
+    if (age < 0.085) return smoothStep(static_cast<float>(age / 0.085));
+    return 1.0f - smoothStep(static_cast<float>((age - 0.085) /
+                                                  (FINGER_PRESS_SECONDS - 0.085)));
+}
 
 ImVec2 pointOnCircle(const ImVec2& center, float radius, float angle)
 {
@@ -47,11 +86,12 @@ PushButton buttonHitbox(const char* id, const ImVec2& center, float scale,
 }
 
 void drawPushButton(ImDrawList* draw, const PushButton& button,
-                    float scale, int symbol, bool paused)
+                    float scale, int symbol, bool paused, float pressAmount)
 {
     const float halfWidth = 18.0f * scale;
     const float halfHeight = 7.0f * scale;
-    const float pressedOffset = button.held ? 2.0f * scale : 0.0f;
+    const float pressedOffset = std::max(button.held ? 2.0f : 0.0f,
+                                         3.0f * pressAmount) * scale;
     const ImVec2 center(button.center.x, button.center.y + pressedOffset);
     const ImVec2 topLeft(center.x - halfWidth, center.y - halfHeight);
     const ImVec2 bottomRight(center.x + halfWidth, center.y + halfHeight);
@@ -91,11 +131,33 @@ void drawPushButton(ImDrawList* draw, const PushButton& button,
 
 } // namespace
 
+void initializeStopwatchWidget()
+{
+    if (!handAtlas) {
+        handAtlas = loadSOILWithAlpha(ELEMENTAL_ASSET_DIR "/stopwatch_hand_atlas.png");
+    }
+}
+
+void shutdownStopwatchWidget()
+{
+    if (handAtlas) glDeleteTextures(1, &handAtlas);
+    handAtlas = 0;
+}
+
+void triggerStopwatchFinger(StopwatchAction action)
+{
+    int finger = -1;
+    if (action == StopwatchAction::Slower) finger = 0;
+    if (action == StopwatchAction::TogglePause) finger = 1;
+    if (action == StopwatchAction::Faster) finger = 2;
+    if (finger >= 0) fingerPressStart[finger] = ImGui::GetTime();
+}
+
 StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool paused)
 {
     const ImGuiIO& io = ImGui::GetIO();
     const float scale = std::max(0.72f, std::min(1.0f, io.DisplaySize.y / 768.0f));
-    const ImVec2 size(280.0f * scale, 326.0f * scale);
+    const ImVec2 size(330.0f * scale, 426.0f * scale);
     const ImVec2 position(14.0f * scale,
                           std::max(8.0f * scale,
                                    io.DisplaySize.y - size.y - 14.0f * scale));
@@ -111,24 +173,32 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
     ImGui::Begin("Simulation stopwatch", nullptr, flags);
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 origin = ImGui::GetWindowPos();
-    const ImVec2 center(origin.x + 140.0f * scale, origin.y + 185.0f * scale);
+    const ImVec2 faceOrigin(origin.x + 25.0f * scale,
+                            origin.y + 100.0f * scale);
+    const ImVec2 center(faceOrigin.x + 140.0f * scale,
+                        faceOrigin.y + 185.0f * scale);
     const float radius = 111.0f * scale;
 
+    drawHandPart(draw, AtlasRegion{105.0f, 145.0f, 850.0f, 925.0f},
+                 ImVec2(faceOrigin.x + 4.0f * scale,
+                        faceOrigin.y + 54.0f * scale),
+                 ImVec2(270.0f * scale, 280.0f * scale));
+
     const PushButton slower = buttonHitbox(
-        "##slower", ImVec2(center.x - 70.0f * scale, origin.y + 40.0f * scale),
+        "##slower", ImVec2(center.x - 70.0f * scale, faceOrigin.y + 40.0f * scale),
         scale, "Halve simulation speed ([)");
     const PushButton pause = buttonHitbox(
-        "##pause", ImVec2(center.x, origin.y + 21.0f * scale),
+        "##pause", ImVec2(center.x, faceOrigin.y + 21.0f * scale),
         scale, paused ? "Resume simulation (P)" : "Pause simulation (P)");
     const PushButton faster = buttonHitbox(
-        "##faster", ImVec2(center.x + 70.0f * scale, origin.y + 40.0f * scale),
+        "##faster", ImVec2(center.x + 70.0f * scale, faceOrigin.y + 40.0f * scale),
         scale, "Double simulation speed (])");
 
     // The stems sit behind the case; the three caps remain clickable above it.
     const PushButton buttons[3] = {slower, pause, faster};
     for (int i = 0; i < 3; ++i) {
-        const float stemBottom = i == 1 ? origin.y + 76.0f * scale
-                                         : origin.y + 93.0f * scale;
+        const float stemBottom = i == 1 ? faceOrigin.y + 76.0f * scale
+                                         : faceOrigin.y + 93.0f * scale;
         draw->AddLine(ImVec2(buttons[i].center.x, buttons[i].center.y + 6.0f * scale),
                       ImVec2(buttons[i].center.x, stemBottom),
                       IM_COL32(52, 65, 77, 255), 12.0f * scale);
@@ -224,9 +294,25 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
                      10.0f * scale, IM_COL32(246, 148, 80, 255), "PAUSED");
     }
 
-    drawPushButton(draw, slower, scale, -1, paused);
-    drawPushButton(draw, pause, scale, 0, paused);
-    drawPushButton(draw, faster, scale, 1, paused);
+    const float leftPress = fingerPressAmount(0);
+    const float middlePress = fingerPressAmount(1);
+    const float rightPress = fingerPressAmount(2);
+    drawPushButton(draw, slower, scale, -1, paused, leftPress);
+    drawPushButton(draw, pause, scale, 0, paused, middlePress);
+    drawPushButton(draw, faster, scale, 1, paused, rightPress);
+
+    drawHandPart(draw, AtlasRegion{510.0f, 30.0f, 840.0f, 300.0f},
+                 ImVec2(slower.center.x - 90.0f * scale,
+                        slower.center.y - 74.0f * scale + leftPress * 9.0f * scale),
+                 ImVec2(100.0f * scale, 82.0f * scale));
+    drawHandPart(draw, AtlasRegion{970.0f, 25.0f, 1170.0f, 310.0f},
+                 ImVec2(pause.center.x - 30.0f * scale,
+                        pause.center.y - 87.0f * scale + middlePress * 9.0f * scale),
+                 ImVec2(60.0f * scale, 91.0f * scale));
+    drawHandPart(draw, AtlasRegion{1270.0f, 30.0f, 1605.0f, 300.0f},
+                 ImVec2(faster.center.x - 9.0f * scale,
+                        faster.center.y - 75.0f * scale + rightPress * 9.0f * scale),
+                 ImVec2(106.0f * scale, 86.0f * scale));
     ImGui::End();
 
     if (slower.clicked) return StopwatchAction::Slower;
