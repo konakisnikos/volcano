@@ -5,8 +5,8 @@ in vec2 vTexCoord;
 in float vRiverMask;
 in float vDist;
 in float vGrassMask;
+in float vRiverBankDistance;
 
-// REMOVE: in float vModelY;  (doesn't exist)
 in vec3 vWorldPos;
 in vec3 vWorldNormal;
 
@@ -18,13 +18,12 @@ uniform float uLavaTextureBlend;
 uniform sampler2D uWaterNormalTexture;
 uniform float uWaterNormalStrength;
 uniform float u_LavaTime;
+uniform float u_LavaFlowSpeed;
 
-// Domino chain (Part B.4a): once the lava front reaches the river end, a cooling
-// boundary travels back toward the crater. -1 means "not cooling yet".
+// Cooling travels back toward the crater; -1 disables it.
 uniform float u_LavaCoolStart;
 uniform float u_LavaCoolDuration;
 
-// Domino chain (Part B.4c): river channel fills with water as rain falls.
 uniform float u_WaterFill; // 0 = dry riverbed, 1 = fully filled with water
 uniform float u_RainIntensity;
 uniform float u_GrassGrowth;
@@ -54,16 +53,14 @@ uniform Light light[2];
 uniform vec4 Ka;
 uniform vec4 Ks;
 uniform float Ns;
-uniform bool uUseClassicPhong;
 
-// NEW: crack controls (keep small count)
+// Crack data uploaded by CrackSystem.
 #define MAX_CRACKS 8
 uniform int  uCrackCount;
 uniform vec2 uCrackPosXZ[MAX_CRACKS];
 uniform float uCrackStartTime[MAX_CRACKS];
 uniform float uCrackWidth[MAX_CRACKS];
 
-// NEW: line crack controls
 uniform vec2 uCrackDirXZ[MAX_CRACKS];     // normalized direction in XZ
 uniform float uCrackHalfLen[MAX_CRACKS];  // half length of the segment
 
@@ -135,7 +132,7 @@ float crackMaskAt(vec2 xz, int i, float tNow) {
     vec2 a = uCrackPosXZ[i] - dir * uCrackHalfLen[i];
     vec2 b = uCrackPosXZ[i] + dir * uCrackHalfLen[i];
 
-    // --- NEW: warp along the crack to make it jagged (not perfectly straight) ---
+    // Warp the crack sideways with one-dimensional noise.
     // Parameter along the crack (use projection on direction)
     float s = dot(xz - uCrackPosXZ[i], dir);
 
@@ -231,11 +228,9 @@ void main() {
                          clamp(grassNoise * 0.78 + maskValue * 0.22, 0.0, 1.0));
    mixedRockColor = mix(mixedRockColor, grassColor, grassCoverage * 0.96);
 
-   // The crater pool is the lava source. A softly perturbed front prevents the
-   // flow from looking like a perfectly straight progress bar down the channel.
+   // Perturb the lava front along the channel.
    vec2 xz = vWorldPos.xz;
-   float speed = 20.0;
-   float flowHead = u_LavaTime * speed;
+   float flowHead = u_LavaTime * u_LavaFlowSpeed;
    float frontPerturbation = sin(vWorldPos.x * 0.10 + vWorldPos.z * 0.025
                                  - u_LavaTime * 1.4) * 4.0;
    float flowMask = 1.0 - smoothstep(flowHead + frontPerturbation,
@@ -253,8 +248,7 @@ void main() {
    float craterPool = (1.0 - smoothstep(craterEdge * 0.76,
                                         craterEdge, vDist)) * lavaActive;
 
-   // Cracks use a dim ember edge and a narrow hot core instead of one uniformly
-   // yellow line. This makes their width and direction much easier to read.
+   // Separate the hot core from the darker crack edges.
    float crack = 0.0;
    for (int i = 0; i < uCrackCount; ++i) {
        crack = max(crack, crackMaskAt(xz, i, u_LavaTime));
@@ -266,6 +260,7 @@ void main() {
    float lavaMix = clamp(max(max(lavaMixRiver, lavaMixCrack), craterPool), 0.0, 1.0);
    float coolingProgress = 0.0;
    float coolingCrustMask = 0.0;
+   float localCooling = 0.0;
 
    // Cool from the far end back toward the crater. vDist is the same radial
    // coordinate used for lava travel; a little noise keeps the boundary from
@@ -277,9 +272,9 @@ void main() {
                                 u_RiverInnerRadius - 18.0,
                                 coolingProgress);
        float coolingJitter = (lavaFbm(xz * 0.032 + vec2(2.7, -5.1)) - 0.5) * 18.0;
-       float localCooling = smoothstep(coolingFront - 9.0,
-                                       coolingFront + 9.0,
-                                       vDist + coolingJitter);
+       localCooling = smoothstep(coolingFront - 9.0,
+                                 coolingFront + 9.0,
+                                 vDist + coolingJitter);
        float activeFlow = max(lavaMixRiver, lavaMixCrack);
        coolingCrustMask = activeFlow * localCooling;
        // River lava cools after reaching the base, but the deep crater pool
@@ -295,9 +290,7 @@ void main() {
    float fineNoise = lavaFbm(lavaCoordinates * 2.35 + vec2(4.0, -2.0));
    float convection = clamp(broadNoise * 0.76 + fineNoise * 0.24, 0.0, 1.0);
 
-   // Lab 3 texture mapping: two differently scaled UV layers move in separate
-   // directions. Existing FBM offsets the UVs, so the photograph contributes
-   // fine flow detail without replacing the procedural shape or cooling masks.
+   // Two moving texture samples add detail within the procedural lava mask.
    if (uLavaTextureBlend > 0.001 && lavaMix > 0.001) {
        vec2 uvDistortion = vec2(broadNoise - 0.5, fineNoise - 0.5) * 0.095;
        vec2 lavaUv = vWorldPos.xz * vec2(0.0016, 0.00115);
@@ -334,9 +327,7 @@ void main() {
 
    vec3 finalAlbedo = mix(mixedRockColor, finalLavaColor, lavaMix);
 
-   // The moving glow is replaced by a persistent dark, slightly warm crust.
-   // This visually connects the lava-to-ash transformation instead of making
-   // the flow simply disappear back into the original terrain texture.
+   // Keep cooled lava visible as a dark crust.
    vec3 cooledLava = mix(vec3(0.065, 0.040, 0.032),
                          vec3(0.022, 0.025, 0.032), convection);
    finalAlbedo = mix(finalAlbedo, cooledLava,
@@ -373,9 +364,7 @@ void main() {
                      - u_LavaTime * 1.28);
    float wavePattern = waveA * 0.56 + waveB * 0.44;
 
-   // Lab 3: two normal-map layers scroll at different rates. Using vDist as
-   // the longitudinal coordinate makes the dominant motion follow the curved
-   // river rather than moving in one straight world-space direction.
+   // vDist carries the normal-map motion along the curved river.
    vec2 waterTextureSlope = vec2(0.0);
    if (waterMix > 0.001 && uWaterNormalStrength > 0.001) {
        vec2 waterUvA = vec2(vWorldPos.x * 0.012,
@@ -395,9 +384,7 @@ void main() {
                          0.18 + waterFresnel * 0.62 + wavePattern * 0.055);
    finalAlbedo = mix(finalAlbedo, waterColor, waterMix);
 
-   // Part B.7: lightning + water. A bright front expands in both directions
-   // from the impact distance, followed by thinner flickering paths. The river
-   // mask confines the whole effect to water without extra geometry or assets.
+   // Electrical energy spreads from the impact point and stays within the water mask.
    float electricEnergy = 0.0;
    if (u_ElectricStart >= 0.0) {
        float electricAge = u_LavaTime - u_ElectricStart;
@@ -412,8 +399,7 @@ void main() {
        float reachedWater = 1.0 - smoothstep(travelledDistance - 12.0,
                                               travelledDistance + 18.0,
                                               alongDistance);
-       // A moving contour through fractal noise creates irregular, broken
-       // current paths. Unlike crossing sine waves it cannot form a grid.
+       // Animate a noise contour to break up the current paths.
        float currentNoise = lavaFbm(xz * 0.052
                                     + vec2(electricAge * 0.85,
                                            -electricAge * 0.48));
@@ -481,30 +467,21 @@ void main() {
               0.0,
               waveB * 0.060 + waterTextureSlope.y));
    vec3 bumpNormal = normalize(mix(rockNormal, waterNormal, waterMix));
-   // Blinn-Phong in one consistent (world) coordinate space.
+   // Phong lighting in world space.
    vec3 N = bumpNormal;
-   // Lab 6 directional-light convention: Light::direction points along the
-   // moon rays (source -> scene), so the surface-to-light vector is its inverse.
-   // The same direction also constructs the orthographic shadow view.
+   // Light::direction points from the moon toward the scene.
    vec3 L = normalize(-light[0].lightDirection_worldspace);
    vec3 V = normalize(cameraPosition_worldspace - vWorldPos);
-   vec3 H = normalize(L + V);
    vec3 R = reflect(-L, N);
 
    vec4 Ia = light[0].La * Ka;
    float cosTheta = max(dot(N, L), 0.0);
    vec4 Id = light[0].Ld * materialKd * cosTheta;
 
-   // Lab 5 uses classic Phong (R dot V). Keep the Blinn halfway-vector
-   // variant available for a direct comparison without duplicating the shader.
-   float specularAlignment = uUseClassicPhong
-       ? max(dot(R, V), 0.0)
-       : max(dot(N, H), 0.0);
-   float terrainExponent = uUseClassicPhong ? 4.0 : Ns;
-   float specular_factor = pow(specularAlignment, terrainExponent);
+   float specularAlignment = max(dot(R, V), 0.0);
+   float specular_factor = pow(specularAlignment, Ns);
    vec4 Is = light[0].Ls * Ks * specular_factor;
-   float waterExponent = uUseClassicPhong ? 20.0 : 72.0;
-   float waterSpecular = pow(specularAlignment, waterExponent) * waterMix;
+   float waterSpecular = pow(specularAlignment, 20.0) * waterMix;
    vec4 waterHighlight = vec4(vec3(0.34, 0.46, 0.62) * waterSpecular, 0.0);
 
    // Lava is predominantly emissive; reducing reflected moonlight prevents the
@@ -517,18 +494,27 @@ void main() {
    rimFactor = pow(rimFactor, 3.0);
    vec4 rimColor = light[0].Ld * 1.5 * rimFactor;
 
-   // Emission is deliberately stronger than direct moonlight: this is the
-   // inexpensive glow technique used for the assignment (no costly HDR bloom).
+   // Lava emission provides its glow without a separate bloom pass.
    vec3 emission = finalLavaColor * lavaMix
                  * (0.26 + 0.18 * hotVeins + 0.12 * crackCore + 0.05 * lavaPulse);
-   // This is a cheap sky/moon reflection term, not self-illumination. It keeps
-   // water readable under the deliberately low night ambient without HDR.
+   // A narrow warm bounce on the banks follows the active flow and fades as it cools.
+   float riverExtent = smoothstep(u_RiverInnerRadius - 20.0,
+                                  u_RiverInnerRadius + 10.0, vDist)
+                     * (1.0 - smoothstep(u_RiverOuterRadius - 25.0,
+                                         u_RiverOuterRadius + 5.0, vDist));
+   float bankFalloff = 1.0 - smoothstep(6.0, 65.0,
+                                       max(vRiverBankDistance, 0.0));
+   float activeBank = lavaActive * riverExtent
+                    * smoothstep(0.10, 0.85, flowMask)
+                    * (1.0 - localCooling) * (1.0 - lavaMix);
+   vec3 lavaBankLight = vec3(0.18, 0.055, 0.010)
+                      * bankFalloff * activeBank;
+   // Approximate sky reflection on water under low ambient light.
    vec3 waterReflection = waterColor * waterMix
                         * (0.18 + 0.20 * waterFresnel
                            + 0.045 * max(wavePattern, 0.0));
    vec3 electricEmission = vec3(0.18, 0.58, 1.0) * electricEnergy * 0.92;
-   // A very small sky-bounce term keeps steep channel walls from collapsing
-   // into pitch-black shapes under the single moon key light.
+   // Add weak bounced light to steep channel walls.
    float steepChannel = riverBedMask
                       * (1.0 - clamp(abs(N.y), 0.0, 1.0));
    vec3 channelBounce = vec3(0.018, 0.023, 0.042) * steepChannel;
@@ -538,12 +524,10 @@ void main() {
    float shadow = shadowFactor(vWorldPos, bumpNormal, L);
    vec3 lightning = vec3(0.16, 0.22, 0.36) * u_LightningFlash;
    fragment_color = Ia + (1.0 - shadow) * (Id + Is + rimColor + waterHighlight)
-                    + vec4(emission + waterReflection + electricEmission + channelBounce
+                    + vec4(emission + lavaBankLight + waterReflection + electricEmission + channelBounce
                            + lightning * materialKd.rgb, 0.0);
 
-   // The procedural plane is finite. A restrained distance/boundary fog blends
-   // only its remote perimeter into the night horizon, while leaving the old
-   // terrain texture and the foreground lighting untouched.
+   // Fog blends the far edge of the finite terrain into the horizon.
    float cameraDistance = length(cameraPosition_worldspace - vWorldPos);
    float distanceFog = smoothstep(1450.0, 1950.0, cameraDistance) * 0.62;
    float edgeCoordinate = max(abs(vWorldPos.x), abs(vWorldPos.z)) / 675.0;

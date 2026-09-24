@@ -10,13 +10,13 @@ uniform mat4 M;
 uniform mat4 V; // light view matrix
 uniform mat4 P; // light projection matrix
 uniform float u_LavaTime;
+uniform float u_LavaFlowSpeed;
 uniform float u_CraterRadius;
 
 // Mirrors the lava-lift displacement in Volcano.vertexshader so the
 // shadow caster matches the geometry that is actually lit and drawn.
 void main() {
-    float speed = 20.0;
-    float flowHead = u_LavaTime * speed;
+    float flowHead = u_LavaTime * u_LavaFlowSpeed;
     float frontPerturbation = sin(vertexPosition_modelspace.x * 0.10
                                   + vertexPosition_modelspace.z * 0.025
                                   - u_LavaTime * 1.4) * 4.0;

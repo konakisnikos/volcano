@@ -3,7 +3,7 @@
 
 #include <elemental/IntParticleEmitter.h>
 
-// Domino chain (Part B.4b): a cloud that forms in place from rising ash/smoke.
+// Cloud particles grow in place before drifting.
 // Unlike SmokeEmitter, particles don't rise and die/respawn — they spawn once,
 // drift gently, and grow from nothing into a steady puff as the cloud "forms".
 // life here means formation progress (0 = just spawned, 1 = fully formed), the

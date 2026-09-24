@@ -21,8 +21,7 @@ struct VolcanoStats {
     float craterTop;        // Y position of crater rim
     glm::vec2 craterCenter; // (X, Z) position of crater center
 
-    // River channel extent (distance from craterCenter), for the domino chain:
-    // lava/water travel from riverInnerRadius out to riverOuterRadius.
+    // River distances from craterCenter.
     float riverInnerRadius;
     float riverOuterRadius;
     glm::vec2 riverEndXZ;   // world-space (X, Z) of the far end of the river channel
@@ -60,6 +59,7 @@ private:
     std::vector<float>     m_heightMap;  // grayscale heights from heightmap image
     std::vector<float>     m_surfaceHeights;
     std::vector<float>     m_riverMasks;
+    std::vector<float>     m_riverBankDistances;
     std::vector<float>     m_grassMasks;
     std::vector<float>     m_distFromCenter;
 

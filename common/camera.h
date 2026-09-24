@@ -8,22 +8,14 @@ public:
     GLFWwindow* window;
     glm::mat4 viewMatrix;
     glm::mat4 projectionMatrix;
-    // Initial position : on +Z
+    // Fixed establishing shot
     glm::vec3 position;
-    // Initial horizontal angle : toward -Z
     float horizontalAngle;
-    // Initial vertical angle : none
     float verticalAngle;
-    // Field of View
     float FoV;
-    float speed; // units / second
-    float mouseSpeed;
-    float fovSpeed;
-    bool mouseLookEnabled;
 
     Camera(GLFWwindow* window);
     void update();
-    void setMouseLookEnabled(bool enabled);
     void resetToEstablishingShot();
 };
 

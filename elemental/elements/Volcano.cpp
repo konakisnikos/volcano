@@ -10,14 +10,11 @@ Volcano::Volcano(int gridSize, float maxTerrainWidth, float heightScale, glm::ve
     loadHeightMap(ELEMENTAL_ASSET_DIR "/heightmap_8bit.png");
     generateGeometry();
     m_drawable = new Drawable(m_positions, m_texCoords, m_normals, false);
-    // Send River Mask to Layout 3
+    // Keep custom attributes aligned with the generated vertices.
     m_drawable->addExtraAttribute(3, 1, m_riverMasks);
-    
-    // Send Distance to Layout 4
     m_drawable->addExtraAttribute(4, 1, m_distFromCenter);
-
-    // Broad vegetation corridor around the river, separate from the narrow bed.
     m_drawable->addExtraAttribute(5, 1, m_grassMasks);
+    m_drawable->addExtraAttribute(6, 1, m_riverBankDistances);
 
     std::cout << "Data sent to GPU successfully." << std::endl;
     std::cout << "Positions Size: " << m_positions.size() << std::endl;
@@ -59,15 +56,14 @@ float Volcano::surfaceHeightAt(float worldX, float worldZ) const {
 
 
 void Volcano::generateGeometry() {
-    // ------------------------------------------------------------------
-    // STEP 1: Generate the Grid Data (The "Source")
-    // ------------------------------------------------------------------
+    // Generate one set of attributes per grid point before forming triangles.
     std::vector<glm::vec3> tempGridPositions;
     std::vector<glm::vec3> tempGridNormals;
     std::vector<glm::vec2> tempGridTexCoords;
     
     // Temporary vectors hold per-grid-point attributes before unrolling.
     std::vector<float> tempGridRiverMasks; 
+    std::vector<float> tempGridRiverBankDistances;
     std::vector<float> tempGridGrassMasks;
     std::vector<float> tempGridDist;      
 
@@ -76,6 +72,7 @@ void Volcano::generateGeometry() {
     tempGridNormals.resize(m_gridSize * m_gridSize, glm::vec3(0.0f, 1.0f, 0.0f));
     tempGridTexCoords.reserve(m_gridSize * m_gridSize);
     tempGridRiverMasks.reserve(m_gridSize * m_gridSize);
+    tempGridRiverBankDistances.reserve(m_gridSize * m_gridSize);
     tempGridGrassMasks.reserve(m_gridSize * m_gridSize);
     tempGridDist.reserve(m_gridSize * m_gridSize);
 
@@ -123,14 +120,13 @@ void Volcano::generateGeometry() {
     m_stats.craterTop = volcanoAmplitude;                   // The rim is at peak
     m_stats.craterCenter = m_volcanoCenter;                 // (X, Z) position
 
-    // River channel extent, for the domino chain (lava/water travel along +Z from the crater).
+    // The channel runs along +Z from the crater.
     m_stats.riverInnerRadius = riverInnerRadius;
     m_stats.riverOuterRadius = riverOuterRadius;
     m_stats.riverEndXZ = m_volcanoCenter + glm::vec2(riverStartTargetX, riverOuterRadius);
     m_stats.riverEndY = m_stats.riverBedY;
     float closestRiverEndDistance2 = 1.0e30f;
 
-    // Helper Lambda
     auto sampleHeightMap = [this](int i, int j, float fallbackNoiseHeight) {
         if (m_heightMap.empty()) return fallbackNoiseHeight; 
         int idx = i * m_gridSize + j;
@@ -138,7 +134,6 @@ void Volcano::generateGeometry() {
         return m_heightMap[idx] * (m_heightScale * 17.0f); 
     };
 
-    // --- LOOP 1: Calculate Math for every Grid Point ---
     for (int i = 0; i < m_gridSize; ++i) {
         for (int j = 0; j < m_gridSize; ++j) {
             float x = static_cast<float>(j) * step - halfWidth;
@@ -204,6 +199,7 @@ void Volcano::generateGeometry() {
             float riverCenterX = glm::mix(riverStartTargetX + m_volcanoCenter.x, rawRiverCenterX + m_volcanoCenter.x, startBlend);
 
             float riverDistanceX = std::abs(x - riverCenterX);
+            float riverBankDistance = riverDistanceX - riverWidth;
             float lateralMask = 1.0f - glm::smoothstep(riverWidth, riverWidth + riverBlend, riverDistanceX);
             float radialMask = glm::smoothstep(riverInnerRadius - riverRadialBlend, riverInnerRadius + riverRadialBlend, distanceFromCenter) *
                                (1.0f - glm::smoothstep(riverOuterRadius - riverRadialBlend, riverOuterRadius + riverRadialBlend, distanceFromCenter));
@@ -249,6 +245,7 @@ void Volcano::generateGeometry() {
                 static_cast<float>(i) / (m_gridSize - 1)
             );
             tempGridRiverMasks.push_back(riverMask);       // Store cleanly
+            tempGridRiverBankDistances.push_back(riverBankDistance);
             tempGridGrassMasks.push_back(grassMask);
             tempGridDist.push_back(distanceFromCenter);    // Store cleanly
         }
@@ -261,9 +258,7 @@ void Volcano::generateGeometry() {
         m_surfaceHeights[i] = tempGridPositions[i].y;
     }
 
-    // Central differences produce smooth per-vertex normals. The old version
-    // assigned one normal per triangle, which made the 512x512 height field look
-    // visibly faceted under moonlight.
+    // Central differences produce smooth per-vertex normals.
     for (int i = 0; i < m_gridSize; ++i) {
         for (int j = 0; j < m_gridSize; ++j) {
             int leftJ = glm::max(0, j - 1);
@@ -280,42 +275,39 @@ void Volcano::generateGeometry() {
         }
     }
 
-    // ------------------------------------------------------------------
-    // STEP 2: The "Unrolling" (Syncing Grid Data to Triangles)
-    // ------------------------------------------------------------------
-    
-    // Clear the final member vectors so we start fresh
+    // Expand the grid into triangles while preserving attribute order.
     m_positions.clear();
     m_normals.clear();
     m_texCoords.clear();
-    m_riverMasks.clear();     // <--- Crucial clean-up
+    m_riverMasks.clear();
+    m_riverBankDistances.clear();
     m_grassMasks.clear();
-    m_distFromCenter.clear(); // <--- Crucial clean-up
+    m_distFromCenter.clear();
 
-    // We can reserve size to speed it up (6 vertices per grid square)
+    // Two triangles, six vertices per grid cell.
     size_t numIndices = (m_gridSize - 1) * (m_gridSize - 1) * 6;
     m_positions.reserve(numIndices);
     m_normals.reserve(numIndices);
     m_texCoords.reserve(numIndices);
     m_riverMasks.reserve(numIndices);
+    m_riverBankDistances.reserve(numIndices);
     m_grassMasks.reserve(numIndices);
     m_distFromCenter.reserve(numIndices);
 
     for (int i=0; i<m_gridSize - 1; ++i) {
         for (int j=0; j<m_gridSize - 1; ++j) {
-            // Get the indices for the 4 corners in the GRID list
             int v0 = i * m_gridSize + j;       // Top-Left
             int v1 = (i + 1) * m_gridSize + j; // Bottom-Left
             int v2 = v0 + 1;                   // Top-Right
             int v3 = v1 + 1;                   // Bottom-Right
 
-            // Helper lambda to push ONE vertex and ALL its attributes
-            // This guarantees they are always perfectly synced.
+            // Append position and custom attributes in the same order.
             auto pushVertex = [&](int index) {
                 m_positions.push_back(tempGridPositions[index]);
                 m_normals.push_back(tempGridNormals[index]);
                 m_texCoords.push_back(tempGridTexCoords[index]);
                 m_riverMasks.push_back(tempGridRiverMasks[index]); // Match mask to pos
+                m_riverBankDistances.push_back(tempGridRiverBankDistances[index]);
                 m_grassMasks.push_back(tempGridGrassMasks[index]);
                 m_distFromCenter.push_back(tempGridDist[index]);   // Match dist to pos
             };
@@ -332,7 +324,6 @@ void Volcano::generateGeometry() {
         }
     }
 
-    // Done! All member vectors are now populated and perfectly synchronized.
 }
 
 void Volcano::calculateNormals() {
@@ -404,13 +395,8 @@ void Volcano::loadHeightMap(const std::string& path) {
 
     SOIL_free_image_data(data);
 
-    // ---------------------------------------------------------
-    // 2. THE PIXAR SMOOTHING STEP (Fixes the Staircase effect)
-    // ---------------------------------------------------------
-    // Run the smoother multiple times. 
-    // 10 times is usually enough to turn "stairs" into a "slope".
+    // Repeated smoothing softens quantization in the 8-bit heightmap.
     for (int k = 0; k < 3; ++k) {
         volcano_noise::smoothHeightMapData(m_heightMap, m_gridSize);
     }
-    // ---------------------------------------------------------
 }

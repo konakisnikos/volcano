@@ -3,9 +3,7 @@
 
 #include <elemental/IntParticleEmitter.h>
 
-// Domino chain (Part B.4b/c): rain falling from the cloud onto the river bed below.
-// Particles fall straight down from cloud altitude and recycle back to the top
-// once they hit groundY, giving a continuous shower for as long as it's active.
+// Drops recycle at groundY to maintain a continuous shower.
 class RainEmitter : public IntParticleEmitter {
     public:
         // cloudPosition is the spawn area (XZ + altitude); groundLevel is the Y at

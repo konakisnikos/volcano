@@ -5,8 +5,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <common/model.h>
 
-//#define USE_PARALLEL_TRANSFORM
-
 //Gives a random number between 0 and 1
 #define RAND ((float) rand()) / (float) RAND_MAX
 
@@ -17,12 +15,10 @@ struct particleAttributes {
     glm::vec3 accel = glm::vec3(0, 0, 0);
     glm::vec3 velocity = glm::vec3(0, 0, 0);
     float life = 0.0f;
-    // The original Lab 8 particle interface calls this value mass. In this
-    // renderer it is passed to the vertex shader as the billboard scale.
+    // The particle shader uses mass as the billboard scale.
     float mass = 0.0f;
 
-    // Visual controls used only by cloud puffs. Keeping them named avoids
-    // hiding non-physics data in acceleration components.
+    // Cloud formation and opacity controls.
     float targetScale = 0.0f;
     float opacityLimit = 1.0f;
     float animationPhase = 0.0f;

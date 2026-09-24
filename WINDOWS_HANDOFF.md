@@ -53,7 +53,8 @@ Branch commits, oldest first:
   clearly larger than flowers.
 - Lightning impacts and scorch marks are synchronized. Burned ground remains
   visible in the ending.
-- Keep the HUD hidden by default. `F1` opens the compact time-control panel.
+- Keep the HUD hidden by default. `F1` opens the stopwatch; `F2` opens the
+  supplementary controls.
 - Avoid fluid simulation, architectural rewrites and new major features.
 - Target approximately 45–60 FPS on an ordinary university laboratory PC.
 
@@ -96,17 +97,10 @@ positioned. Only change this after a screenshot comparison; if strict physical
 alignment hurts the establishing composition, keep the present placement and
 explain it as an artistic background choice.
 
-### Lab 5 — Classic Phong comparison
+### Lab 5 — Classic Phong lighting
 
-- Classic Phong uses `reflect(-L, N)` and `R dot V`.
-- It is the current default for terrain, water and procedural vegetation.
-- The previous Blinn–Phong halfway-vector implementation is retained as a
-  comparison path.
-- Toggle at runtime through `F1`, or launch with `--classic-phong` and
-  `--blinn-phong`.
-- The user previously found the visual difference small. Do not spend time
-  forcing a large difference: the educational value is the implemented and
-  explainable comparison.
+- Terrain, water and procedural vegetation use ambient, diffuse and specular terms.
+- The specular term uses `reflect(-L, N)` and `R dot V`.
 
 ### Labs 7/8 — particle semantics
 
@@ -122,7 +116,7 @@ explain it as an artistic background choice.
 - It is blended into the established procedural lava rather than replacing it.
 - Default blend is `0.20`; range is `0.00–0.40`.
 - `--lava-texture-blend 0` restores the earlier procedural-only result.
-- The same value is adjustable from the `F1` panel.
+- The same value is adjustable from the `F2` panel.
 
 ### Lab 3 — animated water normal texture
 
@@ -135,7 +129,7 @@ explain it as an artistic background choice.
   fill masks, waves and the electrified-water effect remain intact.
 - Default strength is `0.65`; range is `0.00–1.00`.
 - `--water-normal-strength 0` is the exact procedural-only comparison.
-- Strength is also adjustable in the `F1` panel.
+- Strength is also adjustable in the `F2` panel.
 - Last macOS measurement showed no meaningful performance change (about 65 FPS
   both with strength `0` and `0.65` in the same automated comparison).
 
@@ -149,17 +143,17 @@ explain it as an artistic background choice.
 
 | Control | Action |
 | --- | --- |
-| Mouse | Look around |
-| `W`, `A`, `S`, `D` | Move camera |
-| Up / Down | Change field of view |
-| `C` | Restore establishing shot |
-| `F1` | Show/hide time-control panel |
+| `F1` | Show/hide stopwatch |
+| `F2` | Show/hide supplementary controls |
 | `P` | Pause/resume simulation |
 | `[` / `]` | Halve/double simulation speed |
 | `0` | Restore 1x speed |
 | `R` | Restart the complete sequence |
 | `B` | Trigger a demonstration lightning strike |
 | `Esc` | Exit |
+
+The camera holds the establishing shot throughout the sequence, except for
+the brief scripted shake before the eruption.
 
 ## Build on Windows with Visual Studio 2022
 
@@ -221,13 +215,6 @@ For water comparisons capture both `river` and `electric` with:
 --water-normal-strength 0.65
 ```
 
-For lighting comparisons repeat the same shot with:
-
-```powershell
---classic-phong
---blinn-phong
-```
-
 Check the console for shader compilation, framebuffer and OpenGL errors, and
 confirm the complete stage order reaches `Complete`.
 
@@ -254,12 +241,9 @@ this order:
 3. Visually compare water strength `0` versus `0.65` during river filling and
    the electrified-river stage. Tune only if the normal pattern is too strong,
    too repetitive or hides the electrical effect.
-4. Compare Classic Phong and Blinn–Phong using identical screenshots. Keep
-   Classic Phong as default if it remains visually equivalent; retain the
-   existing toggle either way.
-5. Measure Release performance and distinguish true low FPS from frame-pacing
+4. Measure Release performance and distinguish true low FPS from frame-pacing
    issues. Interactive runs use VSync; automated performance runs are uncapped.
-6. Only if time remains, compare the current fixed moon composition with a moon
+5. Only if time remains, compare the current fixed moon composition with a moon
    direction derived from the light. Do not keep the change if it harms the
    composition.
 

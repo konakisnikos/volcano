@@ -368,29 +368,22 @@ void Drawable::createContext() {
     // Reset the indices vector
     indices = std::vector<unsigned int>();
 
-    // --- STEP 1: Decide how to process the data ---
     if (m_useIndexing) {
-        // STANDARD MODE (For OBJ files):
-        // Uses the helper to remove duplicates and create optimized indices.
-        // Indexing may reorder vertices, so custom terrain attributes use raw mode.
+        // Indexing may reorder vertices, so terrain with custom attributes uses raw mode.
         indexVBO(vertices, uvs, normals, indices, indexedVertices, indexedUVS, indexedNormals);
     } 
     else {
-        // RAW MODE (For Volcano/Terrain):
-        // Do NOT shuffle. Copy data 1:1 so it matches our custom River/Dist arrays perfectly.
+        // Preserve vertex order so custom terrain attributes stay aligned.
         indexedVertices = vertices;
         indexedUVS = uvs;
         indexedNormals = normals;
 
-        // Generate simple sequential indices (0, 1, 2, 3...)
-        // This ensures the triangle order stays exactly how we built it in Volcano.cpp
+        // Sequential indices preserve the original triangle order.
         indices.reserve(vertices.size());
         for (unsigned int i = 0; i < vertices.size(); ++i) {
             indices.push_back(i);
         }
     }
-
-    // --- STEP 2: Standard OpenGL Uploads (Same as before) ---
 
     glGenVertexArrays(1, &VAO);
     glBindVertexArray(VAO);
@@ -434,9 +427,7 @@ void Drawable::createContext() {
 }
 
 void Drawable::addExtraAttribute(int layoutIndex, int componentCount, const std::vector<float>& data) {
-    // 1. OPEN THE DOOR (Bind the VAO)
-    // CHECK THIS VARIABLE NAME! Is it 'VAO', 'm_VAO', 'vao'?
-    glBindVertexArray(VAO); 
+    glBindVertexArray(VAO);
 
     // Create a dedicated buffer for the additional attribute.
     GLuint buffer;

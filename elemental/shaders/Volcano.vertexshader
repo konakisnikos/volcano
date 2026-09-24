@@ -1,41 +1,35 @@
 #version 330 core
 
-// INPUTS (Must match your C++ VBO layout)
+// Vertex attributes match the Drawable layout and terrain-specific masks.
 layout(location = 0) in vec3 vertexPosition_modelspace;
 layout(location = 1) in vec3 vertexNormal_modelspace;
 layout(location = 2) in vec2 aTexCoords;
 
-// --- NEW INPUTS (The Map & The Rules) ---
 layout(location = 3) in float inRiverMask; // 1.0 = River, 0.0 = Rock
 layout(location = 4) in float inDist;      // Distance from crater (for animation)
 layout(location = 5) in float inGrassMask; // broad moist corridor around the river
-// ----------------------------------------
-
-// UNIFORMS
+layout(location = 6) in float inRiverBankDistance;
 uniform mat4 M;
 uniform mat4 V;
 uniform mat4 P;
 uniform float u_LavaTime;
+uniform float u_LavaFlowSpeed;
 uniform float u_CraterRadius;
 uniform float u_WaterFill;
 uniform float u_RiverInnerRadius;
 uniform float u_RiverOuterRadius;
 
-// OUTPUTS to Fragment Shader
 out vec2 vTexCoord;
 
-// --- NEW OUTPUTS (Passing data to the pixel painter) ---
 out float vRiverMask;
 out float vDist;
 out float vGrassMask;
-// -------------------------------------------------------
-
+out float vRiverBankDistance;
 out vec3 vWorldPos;
 out vec3 vWorldNormal;
 
 void main() {
-    float speed = 20.0;
-    float flowHead = u_LavaTime * speed;
+    float flowHead = u_LavaTime * u_LavaFlowSpeed;
     float frontPerturbation = sin(vertexPosition_modelspace.x * 0.10
                                   + vertexPosition_modelspace.z * 0.025
                                   - u_LavaTime * 1.4) * 4.0;
@@ -92,4 +86,5 @@ void main() {
     vRiverMask = inRiverMask;
     vDist = inDist;
     vGrassMask = inGrassMask;
+    vRiverBankDistance = inRiverBankDistance;
 }

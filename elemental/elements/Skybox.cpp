@@ -65,7 +65,7 @@ Skybox::Skybox(const std::vector<std::string>& faces)
 {
 	setupMesh();
 	loadCubemap(faces);
-	m_shaderProgram = loadShaders(ELEMENTAL_SHADER_DIR "/Skybox.vertexshader",
+	m_shaderProgram = ::loadShaders(ELEMENTAL_SHADER_DIR "/Skybox.vertexshader",
 	                              ELEMENTAL_SHADER_DIR "/Skybox.fragmentshader");
 	m_viewLocation = glGetUniformLocation(m_shaderProgram, "V");
 	m_projectionLocation = glGetUniformLocation(m_shaderProgram, "P");
@@ -218,9 +218,4 @@ void Skybox::setupMesh()
 		delete m_drawable;
 	}
 	m_drawable = new Drawable(vertices, uvs, normals);
-}
-
-GLuint Skybox::loadShaders(const char* vertexPath, const char* fragmentPath)
-{
-	return ::loadShaders(vertexPath, fragmentPath);
 }

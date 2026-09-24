@@ -9,7 +9,6 @@ out vec4 fragment_color;
 uniform vec3 cameraPosition_worldspace;
 uniform float uLightningFlash;
 uniform int uGrassPass;
-uniform bool uUseClassicPhong;
 
 #define MAX_SCORCHES 8
 uniform int uScorchCount;
@@ -31,7 +30,6 @@ void main() {
 
     vec3 lightDir = normalize(-light[0].lightDirection_worldspace);
     vec3 viewDir = normalize(cameraPosition_worldspace - vWorldPos);
-    vec3 halfDir = normalize(lightDir + viewDir);
     vec3 reflectionDir = reflect(-lightDir, vWorldNormal);
     // Grass blades are two-sided sheets. abs() lights both faces consistently;
     // closed flower meshes keep the usual one-sided diffuse response.
@@ -39,11 +37,7 @@ void main() {
     float cosTheta = uGrassPass != 0
         ? 0.28 + 0.72 * abs(normalLight)
         : clamp(normalLight, 0.0, 1.0);
-    float specularAlignment = uUseClassicPhong
-        ? max(dot(reflectionDir, viewDir), 0.0)
-        : max(dot(vWorldNormal, halfDir), 0.0);
-    float specularExponent = uUseClassicPhong ? 5.0 : 18.0;
-    float specular = pow(specularAlignment, specularExponent);
+    float specular = pow(max(dot(reflectionDir, viewDir), 0.0), 5.0);
 
     // A small indirect sky term keeps dark bark and leaves readable in the
     // deliberately low moonlight without making them look self-illuminated.

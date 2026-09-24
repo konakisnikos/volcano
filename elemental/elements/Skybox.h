@@ -31,7 +31,6 @@ private:
 
     void loadCubemap(const std::vector<std::string>& faces);
     void setupMesh();
-    GLuint loadShaders(const char* vertexPath, const char* fragmentPath);
 };
 
 #endif // SKYBOX_H

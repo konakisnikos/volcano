@@ -1,4 +1,3 @@
-// Include C++ headers
 #include <iostream>
 #include <algorithm>
 #include <string>
@@ -11,17 +10,13 @@
 #include <sstream>
 #include <SOIL.h>
 
-// Include GLEW
 #include <GL/glew.h>
 
-// Include GLFW
 #include <glfw3.h>
 
-// Include GLM
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-// Shader loading utilities and other
 #include <common/shader.h>
 #include <common/util.h>
 #include <common/camera.h>
@@ -42,6 +37,7 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_opengl3.h>
+#include <elemental/StopwatchWidget.h>
 #endif
 
 // Crack system (CPU -> shader + optional stone burst)
@@ -50,7 +46,6 @@
 using namespace std;
 using namespace glm;
 
-// Function prototypes
 void initialize();
 void createContext();
 void mainLoop();
@@ -64,7 +59,6 @@ void resetSimulation(double realTimeSeconds);
 bool gWindowed = false;
 bool gAutoExitOnComplete = false;
 bool gReportPerformance = false;
-bool gUseClassicPhong = true;
 float gLavaTextureBlend = 0.20f;
 float gWaterNormalStrength = 0.65f;
 float gInitialTimeScale = 1.0f;
@@ -81,7 +75,6 @@ static float lightningRandom01()
     return distribution(gLightningRandom);
 }
 
-// Global variables
 GLFWwindow* window;
 Camera* camera;
 bool gOpenGLContextReady = false;
@@ -98,6 +91,7 @@ struct VolcanoUniformLocations {
     GLint shadowMap;
     GLint lightViewProjection;
     GLint lavaTime;
+    GLint lavaFlowSpeed;
     GLint craterRadius;
     GLint craterCenter;
     GLint scorchCount;
@@ -117,7 +111,6 @@ struct VolcanoUniformLocations {
     GLint materialAmbient;
     GLint materialSpecular;
     GLint materialShininess;
-    GLint useClassicPhong;
     GLint lavaTexture;
     GLint lavaTextureBlend;
     GLint waterNormalTexture;
@@ -148,20 +141,17 @@ SmokeEmitter* smokeEmitter;
 SmokeEmitter* calmSmokeEmitter = nullptr;
 CloudEmitter* ambientCloudEmitter = nullptr;
 
-// Domino chain (Part B.4a): ash/smoke emitted where the lava flow reaches the river end.
-// Must match the "speed" constant in Volcano.vertexshader/fragmentshader so the CPU-side
-// event trigger lines up with what's actually drawn.
+// The CPU trigger and both terrain shaders use this flow speed.
 const float LAVA_FLOW_SPEED = 20.0f;
 const float LAVA_COOL_DURATION = 8.0f;
 SmokeEmitter* ashEmitter = nullptr;
 float lavaCoolStartTime = -1.0f; // lavaTime at which cooling began, or -1 if not yet
 
-// Domino chain (Part B.4b): once ash has been rising for a while, it accumulates
-// into a cloud hovering above the river end.
+// Delay between lava cooling and cloud formation.
 const float CLOUD_FORM_DELAY = 8.5f; // begins just after the slower cooling front completes
 CloudEmitter* cloudEmitter = nullptr;
 
-// Domino chain (Part B.4b/c): once the cloud has been forming for a while, it starts raining.
+// Delay between cloud formation and rainfall.
 const float RAIN_START_DELAY = 3.0f; // seconds after the cloud appears before it starts raining
 RainEmitter* rainEmitter = nullptr;
 float rainStartTime = -1.0f; // lavaTime at which rain began, or -1 if not yet
@@ -170,7 +160,7 @@ const float GRASS_GROW_DURATION = 6.0f; // starts only after the river reaches 1
 const float TREE_GROW_DELAY = 11.2f; // grass and flowers establish before trees
 const float TREE_GROW_DURATION = 4.2f;
 
-// Part B.6: cloud-to-ground lightning and persistent scorch marks.
+// Lightning impacts leave persistent scorch marks.
 LightningSystem* lightningSystem = nullptr;
 std::vector<glm::vec2> scorchPositions;
 std::vector<float> scorchRadii;
@@ -181,17 +171,14 @@ bool manualLightningRequested = false;
 int earlyGroundStrikeCount = 0;
 int vegetationGroundStrikeCount = 0;
 
-// Part B.7: lightning + water. After three strikes make the grown meadow's
-// scorch marks readable, one final bolt energises the river for a few seconds.
+// The final strike energises the river after the ground strikes.
 bool riverStrikeInFlight = false;
 float electricRiverStartTime = -1.0f; // lava-time clock, also used by the shader
 float electricRiverStrikeDistance = 0.0f;
 const float ELECTRIC_RIVER_DURATION = 7.5f;
 const float CALM_NIGHT_DURATION = 12.0f;
 
-// Domino chain (Part B.4d): the river fills first, grass then grows across the
-// damp terrain, and flowers appear last. All vegetation is procedural, so no
-// external models are needed for this assignment stage.
+// Vegetation begins only after the river fills.
 struct PropInstance {
     glm::vec3 position;
     glm::vec3 scale;
@@ -208,7 +195,6 @@ GLuint propMLoc, propVLoc, propPLoc, propColorLoc;
 GLuint propGrassPassLoc, propInstancedPassLoc, propGrassGrowthLoc, propTimeLoc;
 GLint propCameraLocation, propLightningLocation, propScorchCountLocation;
 GLint propScorchPositionsLocation, propScorchRadiiLocation, propScorchStrengthsLocation;
-GLint propUseClassicPhongLocation;
 LightUniformLocations propLightUniforms;
 std::vector<PropInstance> floraProps;
 std::vector<glm::mat4> spherePropMatrices;
@@ -235,6 +221,7 @@ float floraGrowthStartTime = -1.0f;
 // Shadow mapping: depth-only pass rendered from the moonlight's POV
 GLuint depthShaderProgram;
 GLuint depthMLocation, depthVLocation, depthPLocation, depthLavaTimeLocation;
+GLuint depthLavaFlowSpeedLocation;
 GLuint depthCraterRadiusLocation;
 GLuint depthMapFBO;
 GLuint depthMapTexture;
@@ -242,6 +229,7 @@ const unsigned int SHADOW_MAP_SIZE = 2048;
 
 #if defined(ELEMENTAL_ENABLE_IMGUI)
 static bool gShowHud = false;
+static bool gShowSettings = false;
 static bool gImGuiGlfwInitialized = false;
 static bool gImGuiOpenGLInitialized = false;
 #endif
@@ -250,25 +238,19 @@ Light* moonlight;
 
 VolcanoStats stats;
 
-struct Material {
-    glm::vec4 Ks, Kd, Ka;
-    GLfloat Ns;
-};
-
-Material volcanoMaterial = {
-    glm::vec4(0.05f, 0.05f, 0.05f, 1.0f), // Ks
+ogl::Material volcanoMaterial = {
+    glm::vec4(0.1f, 0.1f, 0.15f, 1.0f),  // Ka
     glm::vec4(0.4f, 0.35f, 0.35f, 1.0f), // Kd
-    glm::vec4(0.1f, 0.1f, 0.15f, 1.0f), // Ka
-    10.0f                             // Ns
+    glm::vec4(0.05f, 0.05f, 0.05f, 1.0f), // Ks
+    4.0f,                                 // Ns
+    0, 0, 0, 0                           // No material textures
 };
 
 Volcano* volcano;
 Skybox* skybox;
 SceneDirector* sceneDirector;
 
-// Position of the cooling boundary on the curved river centre line. The same
-// outer-to-inner interpolation is used by the terrain shader, so the ash source
-// and the visible black crust travel together.
+// Match the ash source to the cooling boundary on the river.
 static glm::vec3 coolingFrontWorldPosition(float lavaTime) {
     const float progress = glm::clamp(
         (lavaTime - lavaCoolStartTime) / LAVA_COOL_DURATION, 0.0f, 1.0f);
@@ -291,9 +273,7 @@ static glm::vec3 coolingFrontWorldPosition(float lavaTime) {
     return glm::vec3(x, y, z);
 }
 
-// Returns a point on (or beside) the same curved channel generated by Volcano.
-// Keeping this formula in one small helper makes the scripted lightning targets
-// line up with the visible river and its grassy banks.
+// Locate strike targets on the curved channel and its banks.
 static glm::vec3 riverWorldPoint(float alongRiver, float sideOffset,
                                  float heightOffset = 0.0f) {
     const float distance = glm::mix(stats.riverInnerRadius,
@@ -377,7 +357,6 @@ void createContext()
     propScorchPositionsLocation = glGetUniformLocation(propShaderProgram, "uScorchPosXZ[0]");
     propScorchRadiiLocation = glGetUniformLocation(propShaderProgram, "uScorchRadius[0]");
     propScorchStrengthsLocation = glGetUniformLocation(propShaderProgram, "uScorchStrength[0]");
-    propUseClassicPhongLocation = glGetUniformLocation(propShaderProgram, "uUseClassicPhong");
     propLightUniforms = Light::findUniformLocations(propShaderProgram, 0);
 
     treeShaderProgram = loadShaders(ELEMENTAL_SHADER_DIR "/TreeBillboard.vertexshader",
@@ -406,6 +385,8 @@ void createContext()
     volcanoUniforms.lightViewProjection = glGetUniformLocation(
         volcanoShaderProgram, "u_LightVP");
     volcanoUniforms.lavaTime = glGetUniformLocation(volcanoShaderProgram, "u_LavaTime");
+    volcanoUniforms.lavaFlowSpeed = glGetUniformLocation(
+        volcanoShaderProgram, "u_LavaFlowSpeed");
     volcanoUniforms.craterRadius = glGetUniformLocation(volcanoShaderProgram, "u_CraterRadius");
     volcanoUniforms.craterCenter = glGetUniformLocation(volcanoShaderProgram, "u_CraterCenter");
     volcanoUniforms.scorchCount = glGetUniformLocation(volcanoShaderProgram, "uScorchCount");
@@ -436,8 +417,6 @@ void createContext()
     volcanoUniforms.materialAmbient = glGetUniformLocation(volcanoShaderProgram, "Ka");
     volcanoUniforms.materialSpecular = glGetUniformLocation(volcanoShaderProgram, "Ks");
     volcanoUniforms.materialShininess = glGetUniformLocation(volcanoShaderProgram, "Ns");
-    volcanoUniforms.useClassicPhong = glGetUniformLocation(
-        volcanoShaderProgram, "uUseClassicPhong");
     volcanoUniforms.lavaTexture = glGetUniformLocation(
         volcanoShaderProgram, "uLavaTexture");
     volcanoUniforms.lavaTextureBlend = glGetUniformLocation(
@@ -453,6 +432,7 @@ void createContext()
     depthVLocation = glGetUniformLocation(depthShaderProgram, "V");
     depthPLocation = glGetUniformLocation(depthShaderProgram, "P");
     depthLavaTimeLocation = glGetUniformLocation(depthShaderProgram, "u_LavaTime");
+    depthLavaFlowSpeedLocation = glGetUniformLocation(depthShaderProgram, "u_LavaFlowSpeed");
     depthCraterRadiusLocation = glGetUniformLocation(depthShaderProgram, "u_CraterRadius");
 
     // Shadow map depth texture + FBO (no color attachment needed)
@@ -468,8 +448,7 @@ void createContext()
     glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // Lab 3: a compact version of the existing lava asset is sampled twice
-    // with animated UVs. The procedural shader remains the primary pattern.
+    // The shader samples this texture twice with animated UVs.
     lavaTexture = loadSOIL(ELEMENTAL_ASSET_DIR "/lava_overlay.png");
     glBindTexture(GL_TEXTURE_2D, lavaTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -479,8 +458,7 @@ void createContext()
     glGenerateMipmap(GL_TEXTURE_2D);
     glBindTexture(GL_TEXTURE_2D, 0);
 
-    // Lab 3: tileable CC0 normal map. It changes only the small-scale water
-    // normals; river colour, fill masks and the electric effect stay procedural.
+    // The water normal map adds detail without changing the river mask or colour.
     waterNormalTexture = loadSOIL(ELEMENTAL_ASSET_DIR "/water_normal.png");
     glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -552,8 +530,7 @@ void createContext()
     sceneDirector->setTimeScale(gInitialTimeScale);
     lightningSystem = new LightningSystem();
 
-    // Procedural vegetation geometry (Part B.4d). The whole grass field is one
-    // mesh/draw call; flowers reuse the small sphere and cylinder primitives.
+    // Grass uses one mesh; flowers reuse sphere and cylinder meshes.
     propSphere = createUnitSphereDrawable();
     propCylinder = createUnitCylinderDrawable();
     propSphereRenderer = new InstancedPropRenderer(propSphere);
@@ -567,9 +544,7 @@ void createContext()
     spherePropMatrices.reserve(512);
     spherePropColors.reserve(512);
 
-    // Flat, camera-facing quad used for ALL particle emitters. A textured billboard
-    // quad reads as a smoke puff / raindrop; a sphere (the old particle model) does not.
-    // Corners span [-1,1] so the per-particle scale (mass) maps directly to world size.
+    // All emitters share this quad. Its [-1,1] corners map scale to world size.
     std::vector<glm::vec3> quadVerts = {
         {-1.0f, -1.0f, 0.0f}, {1.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 0.0f},
         {-1.0f, -1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {-1.0f, 1.0f, 0.0f}
@@ -600,8 +575,7 @@ void createContext()
         34.0f, 14.0f,
         0.075f);
 
-    // A wide, sparse pre-existing bank spans the sky instead of collecting in
-    // one small spot. The denser storm cloud is still created by the domino chain.
+    // Sparse ambient clouds are separate from the later storm cloud.
     ambientCloudEmitter = new CloudEmitter(
         particleQuad, 72, glm::vec3(-75.0f, 480.0f, -470.0f),
         540.0f, 88.0f, 22.0f, 46.0f, 0.55f, 3.2f);
@@ -745,6 +719,778 @@ void free()
     gOpenGLContextReady = false;
 }
 
+// Input is handled before advancing simulation time.
+static void changeSimulationSpeed(bool faster)
+{
+    if (!sceneDirector) return;
+    const float scale = sceneDirector->getTimeScale();
+    sceneDirector->setTimeScale(faster ? (scale == 0.0f ? 0.25f : scale * 2.0f)
+                                       : scale * 0.5f);
+}
+
+static void handleKeyboardInput(double currentTime)
+{
+    // Edge-triggered keys prevent repeated actions while held.
+    if (sceneDirector) {
+        static bool pKeyWasDown = false;
+        bool pKeyIsDown = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
+        if (pKeyIsDown && !pKeyWasDown) {
+            sceneDirector->setPaused(!sceneDirector->isPaused());
+        }
+        pKeyWasDown = pKeyIsDown;
+
+        static bool slowKeyWasDown = false;
+        bool slowKeyIsDown = glfwGetKey(window, GLFW_KEY_LEFT_BRACKET) == GLFW_PRESS;
+        if (slowKeyIsDown && !slowKeyWasDown) {
+            changeSimulationSpeed(false);
+        }
+        slowKeyWasDown = slowKeyIsDown;
+
+        static bool fastKeyWasDown = false;
+        bool fastKeyIsDown = glfwGetKey(window, GLFW_KEY_RIGHT_BRACKET) == GLFW_PRESS;
+        if (fastKeyIsDown && !fastKeyWasDown) {
+            changeSimulationSpeed(true);
+        }
+        fastKeyWasDown = fastKeyIsDown;
+
+        static bool resetKeyWasDown = false;
+        bool resetKeyIsDown = glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS;
+        if (resetKeyIsDown && !resetKeyWasDown) {
+            sceneDirector->setTimeScale(1.0f);
+        }
+        resetKeyWasDown = resetKeyIsDown;
+
+        static bool restartKeyWasDown = false;
+        bool restartKeyIsDown = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
+        if (restartKeyIsDown && !restartKeyWasDown) {
+            resetSimulation(currentTime);
+        }
+        restartKeyWasDown = restartKeyIsDown;
+
+        static bool lightningKeyWasDown = false;
+        bool lightningKeyIsDown = glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS;
+        if (lightningKeyIsDown && !lightningKeyWasDown) {
+            manualLightningRequested = true;
+        }
+        lightningKeyWasDown = lightningKeyIsDown;
+
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+        static bool uiKeyWasDown = false;
+        bool uiKeyIsDown = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
+        const bool uiKeyPressed = uiKeyIsDown && !uiKeyWasDown;
+        if (uiKeyPressed) {
+            gShowHud = !gShowHud;
+        }
+        uiKeyWasDown = uiKeyIsDown;
+
+        static bool settingsKeyWasDown = false;
+        bool settingsKeyIsDown = glfwGetKey(window, GLFW_KEY_F2) == GLFW_PRESS;
+        const bool settingsKeyPressed = settingsKeyIsDown && !settingsKeyWasDown;
+        if (settingsKeyPressed) {
+            gShowSettings = !gShowSettings;
+        }
+        settingsKeyWasDown = settingsKeyIsDown;
+        if (uiKeyPressed || settingsKeyPressed) {
+            glfwSetInputMode(window, GLFW_CURSOR,
+                (gShowHud || gShowSettings) ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
+        }
+#endif
+    }
+}
+
+// All particle systems use the scaled simulation delta.
+static float updateParticleSystems(float simulationTime, float simulationDelta, double currentTime)
+{
+    // Every physical effect consumes scaled simulation time. Pausing now
+    // freezes smoke, rain and lightning motion as well as the event timeline.
+    // SceneDirector defines lavaTimeSeconds >= 0 at m_lavaStartSeconds (end of shake).
+    float lavaTimeForSmoke = sceneDirector ? sceneDirector->getLavaTimeSeconds()
+                                           : static_cast<float>(currentTime);
+    if (smokeEmitter && sceneDirector && lavaTimeForSmoke >= 0.0f) {
+        smokeEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
+    }
+    if (calmSmokeEmitter) {
+        calmSmokeEmitter->updateParticles(simulationTime, simulationDelta,
+                                          camera->position);
+    }
+    if (ambientCloudEmitter) {
+        ambientCloudEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
+    }
+    if (ashEmitter) {
+        // Recycle particles at the moving end-to-start cooling boundary.
+        // Older puffs remain behind, so the smoke clearly traces the same
+        // progressive transformation visible on the lava surface.
+        if (lavaCoolStartTime >= 0.0f && lavaTimeForSmoke >= 0.0f) {
+            ashEmitter->followMovingSource(
+                coolingFrontWorldPosition(lavaTimeForSmoke),
+                simulationDelta,
+                210.0f);
+        }
+        ashEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
+    }
+    if (cloudEmitter) {
+        cloudEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
+    }
+    if (rainEmitter) {
+        rainEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
+    }
+    if (lightningSystem) lightningSystem->update(simulationTime, simulationDelta);
+    return lavaTimeForSmoke;
+}
+
+// Moonlight transitions gradually into the calm-night palette.
+static float updateMoonlight()
+{
+    // Update light
+    moonlight->update();
+
+    float calmProgress = 0.0f;
+    if (sceneDirector) {
+        if (sceneDirector->getStage() == SimulationStage::CalmNight) {
+            calmProgress = glm::smoothstep(0.0f, CALM_NIGHT_DURATION,
+                                            sceneDirector->getStageElapsedSeconds());
+        } else if (sceneDirector->getStage() == SimulationStage::Complete) {
+            calmProgress = 1.0f;
+        }
+    }
+
+    // Shift moonlight colours during the calm stage.
+    moonlight->La = glm::mix(glm::vec4(0.040f, 0.040f, 0.200f, 1.0f),
+                             glm::vec4(0.052f, 0.058f, 0.175f, 1.0f),
+                             calmProgress);
+    moonlight->Ld = glm::mix(glm::vec4(0.34f, 0.50f, 0.76f, 1.0f),
+                             glm::vec4(0.40f, 0.53f, 0.72f, 1.0f),
+                             calmProgress);
+    moonlight->Ls = glm::mix(glm::vec4(0.68f, 0.77f, 0.90f, 1.0f),
+                             glm::vec4(0.74f, 0.81f, 0.91f, 1.0f),
+                             calmProgress);
+    return calmProgress;
+}
+
+// Render terrain depth before the lit scene.
+static void renderShadowMap(float lavaTime, int framebufferWidth, int framebufferHeight)
+{
+    // --- Shadow pass: render the volcano's depth from the moonlight's POV ---
+    {
+        mat4 lightView = moonlight->viewMatrix;
+        mat4 lightProjection = moonlight->projectionMatrix;
+        mat4 identity = mat4(1.0);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+        glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        glUseProgram(depthShaderProgram);
+        glUniformMatrix4fv(depthMLocation, 1, GL_FALSE, &identity[0][0]);
+        glUniformMatrix4fv(depthVLocation, 1, GL_FALSE, &lightView[0][0]);
+        glUniformMatrix4fv(depthPLocation, 1, GL_FALSE, &lightProjection[0][0]);
+        glUniform1f(depthLavaTimeLocation, lavaTime);
+        glUniform1f(depthLavaFlowSpeedLocation, LAVA_FLOW_SPEED);
+        glUniform1f(depthCraterRadiusLocation, stats.craterRadius);
+
+        volcano->Draw();
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        // GLFW window units and framebuffer pixels differ on Retina/HiDPI
+        // displays, so always restore the actual drawable size.
+        glViewport(0, 0, framebufferWidth, framebufferHeight);
+    }
+}
+
+// Opaque vegetation is drawn after terrain and before translucent particles.
+static void renderVegetation(float grassGrowth, float lavaTime, float simulationTime,
+                             const glm::mat4& viewMatrix,
+                             const glm::mat4& projectionMatrix)
+{
+    // Draw grass before flowers and trees.
+    if ((grassField && grassGrowth > 0.0f) || !floraProps.empty()) {
+        glUseProgram(propShaderProgram);
+        glUniformMatrix4fv(propVLoc, 1, GL_FALSE, &viewMatrix[0][0]);
+        glUniformMatrix4fv(propPLoc, 1, GL_FALSE, &projectionMatrix[0][0]);
+        glUniform3fv(propCameraLocation, 1, &camera->position[0]);
+        glUniform1f(propLightningLocation,
+                    lightningSystem ? lightningSystem->flashStrength() : 0.0f);
+        glUniform1i(propScorchCountLocation,
+                    static_cast<GLint>(scorchPositions.size()));
+        if (!scorchPositions.empty()) {
+            glUniform2fv(propScorchPositionsLocation,
+                         static_cast<GLsizei>(scorchPositions.size()),
+                         &scorchPositions[0].x);
+            glUniform1fv(propScorchRadiiLocation,
+                         static_cast<GLsizei>(scorchRadii.size()),
+                         &scorchRadii[0]);
+            glUniform1fv(propScorchStrengthsLocation,
+                         static_cast<GLsizei>(scorchStrengths.size()),
+                         &scorchStrengths[0]);
+        }
+        glUniform1f(propTimeLoc, simulationTime);
+        moonlight->uploadLight(propLightUniforms);
+
+        if (grassField && grassGrowth > 0.0f) {
+            const mat4 grassModel(1.0f); // blade vertices are already in world space
+            glUniform1i(propGrassPassLoc, 1);
+            glUniform1i(propInstancedPassLoc, 0);
+            glUniform1f(propGrassGrowthLoc, grassGrowth);
+            glUniformMatrix4fv(propMLoc, 1, GL_FALSE, &grassModel[0][0]);
+            glUniform3f(propColorLoc, 0.20f, 0.52f, 0.095f);
+            grassField->bind();
+            grassField->draw();
+        }
+
+        glUniform1i(propGrassPassLoc, 0);
+
+        // Repeated flower pieces are sent as two instance batches (stems and
+        // blooms), reducing the fully grown meadow from 504 prop draw calls
+        // to two while preserving the same growth and breeze animation.
+        cylinderPropMatrices.clear();
+        cylinderPropColors.clear();
+        spherePropMatrices.clear();
+        spherePropColors.clear();
+        for (const auto& prop : floraProps) {
+            float age = lavaTime - floraGrowthStartTime - prop.growthDelay;
+            float growth = glm::smoothstep(0.0f, prop.growthDuration, age);
+            if (growth <= 0.0f) continue;
+            glm::vec3 growingPosition = prop.position;
+            growingPosition.y = prop.groundY
+                              + (prop.position.y - prop.groundY) * growth;
+            growingPosition.x += std::sin(simulationTime * 0.62f + prop.swayPhase)
+                               * prop.swayAmount * growth;
+            mat4 propModel = glm::translate(mat4(1.0f), growingPosition)
+                           * glm::scale(mat4(1.0f), prop.scale * growth);
+            if (prop.useCylinder) {
+                cylinderPropMatrices.push_back(propModel);
+                cylinderPropColors.push_back(prop.color);
+            } else {
+                spherePropMatrices.push_back(propModel);
+                spherePropColors.push_back(prop.color);
+            }
+        }
+        glUniform1i(propInstancedPassLoc, 1);
+        propCylinderRenderer->draw(cylinderPropMatrices, cylinderPropColors);
+        propSphereRenderer->draw(spherePropMatrices, spherePropColors);
+        glUniform1i(propInstancedPassLoc, 0);
+    }
+
+    // Trees are alpha-cutout cylindrical billboards. Each quad turns only
+    // around world Y, so trunks stay vertical while always facing the camera.
+    if (!treeProps.empty()) {
+        glUseProgram(treeShaderProgram);
+        glUniformMatrix4fv(treeVLoc, 1, GL_FALSE, &viewMatrix[0][0]);
+        glUniformMatrix4fv(treePLoc, 1, GL_FALSE, &projectionMatrix[0][0]);
+        glUniform3fv(treeCameraLoc, 1, &camera->position[0]);
+        glUniform1f(treeTimeLoc, simulationTime);
+        glUniform1f(treeLightningLoc,
+                    lightningSystem ? lightningSystem->flashStrength() : 0.0f);
+        glActiveTexture(GL_TEXTURE0);
+        glUniform1i(treeTextureLoc, 0);
+        particleQuad->bind();
+
+        // Two texture passes keep the renderer simple and avoid rebinding
+        // for every tree while supporting both green and flowering species.
+        for (int speciesPass = 0; speciesPass < 2; ++speciesPass) {
+            const bool floweringPass = speciesPass == 1;
+            glBindTexture(GL_TEXTURE_2D,
+                          floweringPass ? almondTreeTexture : treeTexture);
+            for (const auto& tree : treeProps) {
+                if (tree.flowering != floweringPass) continue;
+                float age = lavaTime - floraGrowthStartTime - tree.growthDelay;
+                float growth = glm::smoothstep(0.0f, TREE_GROW_DURATION, age);
+                if (growth <= 0.0f) continue;
+                glUniform3fv(treeBaseLoc, 1, &tree.basePosition[0]);
+                glUniform2fv(treeSizeLoc, 1, &tree.size[0]);
+                glUniform3fv(treeTintLoc, 1, &tree.tint[0]);
+                glUniform1f(treeGrowthLoc, growth);
+                glUniform1f(treeSwayLoc, tree.swayPhase);
+                particleQuad->draw();
+            }
+        }
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+}
+
+// Translucent weather and lightning follow opaque scene geometry.
+static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
+                                         float calmProgress,
+                                         const glm::mat4& viewMatrix,
+                                         const glm::mat4& projectionMatrix)
+{
+    // Draw smoke/ash/cloud last (transparent)
+    bool drawSmoke = smokeEmitter && sceneDirector && lavaTimeForSmoke >= 0.0f;
+    if (drawSmoke || calmSmokeEmitter || ambientCloudEmitter || ashEmitter ||
+        cloudEmitter || rainEmitter) {
+        glDepthMask(GL_FALSE);
+
+        glUseProgram(particleShaderProgram);
+        mat4 PV = projectionMatrix * viewMatrix;
+        glUniformMatrix4fv(particlePVLocation, 1, GL_FALSE, &PV[0][0]);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, smokeTexture);
+        glUniform1i(particleTextureSampler, 0);
+
+        // Distinguish emitters with separate tints and opacity.
+        if (drawSmoke) {
+            glUniform3f(particleTintLocation, 0.255f, 0.25f, 0.26f);
+            const float heavySmokeFade = 1.0f
+                - glm::smoothstep(0.0f, 0.58f, calmProgress);
+            glUniform1f(particleAlphaLocation, 0.27f * heavySmokeFade);
+            glUniform2f(particleShapeScaleLocation, 1.10f, 1.0f);
+            glUniform1f(particlePuffinessLocation, 1.0f);
+            glUniform1f(particleShearLocation, 0.0f);
+            smokeEmitter->renderParticles();
+        }
+        if (calmSmokeEmitter) {
+            const float steamFormation = glm::smoothstep(0.06f, 0.82f,
+                                                          calmProgress);
+            glUniform3f(particleTintLocation, 0.84f, 0.85f, 0.88f);
+            glUniform1f(particleAlphaLocation, 0.15f * steamFormation);
+            glUniform2f(particleShapeScaleLocation, 0.82f, 0.94f);
+            glUniform1f(particlePuffinessLocation, 0.94f);
+            glUniform1f(particleShearLocation, 0.0f);
+            calmSmokeEmitter->renderParticles();
+        }
+        if (ambientCloudEmitter) {
+            glUniform3f(particleTintLocation, 0.41f, 0.43f, 0.50f);
+            glUniform1f(particleAlphaLocation,
+                        glm::mix(0.30f, 0.035f, calmProgress));
+            glUniform2f(particleShapeScaleLocation, 1.35f, 0.72f);
+            glUniform1f(particlePuffinessLocation, 0.9f);
+            glUniform1f(particleShearLocation, 0.0f);
+            ambientCloudEmitter->renderParticles();
+        }
+        if (ashEmitter) {
+            float ashAge = sceneDirector &&
+                           sceneDirector->getStage() == SimulationStage::SmokeAndAsh
+                ? sceneDirector->getStageElapsedSeconds()
+                : CLOUD_FORM_DELAY;
+            float ashFormation = glm::smoothstep(0.0f, 1.4f, ashAge);
+            float ashCooling = glm::smoothstep(0.0f, LAVA_COOL_DURATION, ashAge);
+            float ashFade = cloudEmitter
+                ? 1.0f - glm::smoothstep(0.0f, 6.0f,
+                                         lavaTime - (lavaCoolStartTime + CLOUD_FORM_DELAY))
+                : 1.0f;
+            glm::vec3 warmAsh(0.22f, 0.185f, 0.17f);
+            glm::vec3 coolAsh(0.145f, 0.15f, 0.17f);
+            glm::vec3 ashTint = glm::mix(warmAsh, coolAsh, ashCooling);
+            glUniform3f(particleTintLocation, ashTint.r, ashTint.g, ashTint.b);
+            glUniform1f(particleAlphaLocation, 0.24f * ashFormation * ashFade);
+            glUniform2f(particleShapeScaleLocation, 0.78f, 1.08f);
+            glUniform1f(particlePuffinessLocation, 0.92f);
+            glUniform1f(particleShearLocation, 0.0f);
+            ashEmitter->renderParticles();
+        }
+        if (cloudEmitter) {
+            glUniform3f(particleTintLocation, 0.37f, 0.39f, 0.47f);
+            glUniform1f(particleAlphaLocation,
+                        0.42f * (1.0f - calmProgress));
+            glUniform2f(particleShapeScaleLocation, 1.28f, 0.68f);
+            glUniform1f(particlePuffinessLocation, 0.95f);
+            glUniform1f(particleShearLocation, 0.0f);
+            cloudEmitter->renderParticles();
+        }
+        if (rainEmitter) {
+            float rainFade = floraSpawned
+                ? 1.0f - glm::smoothstep(0.0f, 5.0f, lavaTime - floraGrowthStartTime)
+                : 1.0f;
+            float rainAge = glm::max(0.0f, lavaTime - rainStartTime);
+            float rainBuild = glm::smoothstep(0.0f, 1.6f, rainAge);
+            glUniform3f(particleTintLocation, 0.58f, 0.72f, 0.90f);
+            glUniform1f(particleAlphaLocation, 0.82f * rainBuild * rainFade);
+            glUniform2f(particleShapeScaleLocation, 0.17f, 6.2f);
+            glUniform1f(particlePuffinessLocation, 0.0f);
+            glUniform1f(particleShearLocation, 0.16f);
+            rainEmitter->renderParticles();
+        }
+        // Restore defaults for any later particle draws.
+        glUniform3f(particleTintLocation, 1.0f, 1.0f, 1.0f);
+        glUniform1f(particleAlphaLocation, 1.0f);
+        glUniform2f(particleShapeScaleLocation, 1.0f, 1.0f);
+        glUniform1f(particlePuffinessLocation, 0.0f);
+        glUniform1f(particleShearLocation, 0.0f);
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDepthMask(GL_TRUE);
+    }
+
+    if (lightningSystem) {
+        glDepthMask(GL_FALSE);
+        lightningSystem->draw(viewMatrix, projectionMatrix);
+        glDepthMask(GL_TRUE);
+    }
+}
+
+// The ImGui frame is rendered even when its controls are hidden.
+static void renderControls(double currentTime, float waterFill)
+{
+    #if defined(ELEMENTAL_ENABLE_IMGUI)
+    if (gShowHud) {
+        if (sceneDirector) {
+            const StopwatchAction action = drawStopwatch(
+                sceneDirector->getSimSeconds(), sceneDirector->getTimeScale(),
+                sceneDirector->isPaused());
+            if (action == StopwatchAction::Slower) changeSimulationSpeed(false);
+            else if (action == StopwatchAction::Faster) changeSimulationSpeed(true);
+            else if (action == StopwatchAction::TogglePause) {
+                sceneDirector->setPaused(!sceneDirector->isPaused());
+            }
+        }
+    }
+
+    if (gShowSettings) {
+        ImGui::SetNextWindowBgAlpha(0.72f);
+        ImGui::SetNextWindowPos(
+            ImVec2(std::max(18.0f, ImGui::GetIO().DisplaySize.x - 334.0f), 18.0f),
+            ImGuiCond_FirstUseEver);
+        if (ImGui::Begin("Other controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize) &&
+            sceneDirector) {
+            ImGui::Text("Stage: %s", sceneDirector->getStageName());
+            if (ImGui::Button("Normal speed")) sceneDirector->setTimeScale(1.0f);
+            ImGui::SameLine();
+            if (ImGui::Button("Restart")) resetSimulation(currentTime);
+
+            if (ImGui::Button("Lightning")) manualLightningRequested = true;
+
+            ImGui::SliderFloat("Lava texture",
+                               &gLavaTextureBlend, 0.0f, 0.40f, "%.2f");
+            ImGui::SliderFloat("Water normals",
+                               &gWaterNormalStrength, 0.0f, 1.0f, "%.2f");
+
+            ImGui::ProgressBar(waterFill, ImVec2(-1.0f, 0.0f), "River water");
+            ImGui::Separator();
+            ImGui::TextDisabled("F2 close  |  F1 stopwatch  |  R restart");
+        }
+        ImGui::End();
+    }
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+    #endif
+}
+
+// Report uncapped frame timing after the run.
+static void reportPerformance(double performanceStartTime,
+                              unsigned long long renderedFrameCount,
+                              std::vector<float>& frameTimesMs)
+{
+if (gReportPerformance) {
+    const double measuredSeconds = glfwGetTime() - performanceStartTime;
+    const double averageFps = measuredSeconds > 0.0
+        ? static_cast<double>(renderedFrameCount) / measuredSeconds
+        : 0.0;
+    std::cout << std::fixed << std::setprecision(1)
+              << "Performance: " << renderedFrameCount << " frames in "
+              << measuredSeconds << " s (" << averageFps
+              << " average FPS)" << std::endl;
+    if (!frameTimesMs.empty()) {
+        std::sort(frameTimesMs.begin(), frameTimesMs.end());
+        const auto percentile = [&](float fraction) {
+            const std::size_t index = static_cast<std::size_t>(
+                fraction * static_cast<float>(frameTimesMs.size() - 1));
+            return frameTimesMs[index];
+        };
+        const std::size_t framesOver16Ms = static_cast<std::size_t>(std::count_if(
+            frameTimesMs.begin(), frameTimesMs.end(),
+            [](float milliseconds) { return milliseconds > 16.67f; }));
+        const std::size_t framesOver33Ms = static_cast<std::size_t>(std::count_if(
+            frameTimesMs.begin(), frameTimesMs.end(),
+            [](float milliseconds) { return milliseconds > 33.33f; }));
+        std::cout << "Frame time: p95 " << percentile(0.95f)
+                  << " ms, p99 " << percentile(0.99f)
+                  << " ms, max " << frameTimesMs.back() << " ms; "
+                  << framesOver16Ms << " frames >16.7 ms, "
+                  << framesOver33Ms << " frames >33.3 ms" << std::endl;
+    }
+}
+}
+
+// Advance the staged effects and consume lightning impacts before uploading uniforms.
+static void advanceElementalEvents(float lavaTime, float simulationTime,
+                                   const VolcanoStats& stats)
+{
+    // Each transition creates the next effect once.
+    if (sceneDirector->getStage() == SimulationStage::LavaFlowing && lavaTime >= 0.0f) {
+        float flowHead = lavaTime * LAVA_FLOW_SPEED;
+        if (flowHead >= stats.riverOuterRadius) {
+            lavaCoolStartTime = lavaTime;
+
+            glm::vec3 riverEndPos = coolingFrontWorldPosition(lavaTime);
+            ashEmitter = new SmokeEmitter(
+                particleQuad, 1300, riverEndPos,
+                14.0f,    // compact band around the cooling boundary
+                3.0f, 11.0f,
+                38.0f, 12.0f,
+                0.12f);
+            ashEmitter->plumeHeight = 420.0f;
+            sceneDirector->transitionTo(SimulationStage::SmokeAndAsh);
+        }
+    }
+
+    if (sceneDirector->getStage() == SimulationStage::SmokeAndAsh &&
+        sceneDirector->getStageElapsedSeconds() >= CLOUD_FORM_DELAY) {
+        // Form a broad cloud above the river and volcano.
+        glm::vec3 cloudPos(
+            glm::mix(stats.craterCenter.x, stats.riverEndXZ.x, 0.48f),
+            stats.craterTop + 230.0f,
+            glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
+        cloudEmitter = new CloudEmitter(
+            particleQuad, 110, cloudPos,
+            285.0f, 72.0f, 22.0f, 50.0f, 1.15f, 5.0f);
+        sceneDirector->transitionTo(SimulationStage::CloudFormation);
+        nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
+    }
+
+    if (sceneDirector->getStage() == SimulationStage::CloudFormation &&
+        sceneDirector->getStageElapsedSeconds() >= RAIN_START_DELAY) {
+        rainStartTime = lavaTime;
+        rainEmitter = new RainEmitter(particleQuad, 1200, cloudEmitter->emitter_pos,
+                                      stats.riverEndY, 285.0f);
+        sceneDirector->transitionTo(SimulationStage::Raining);
+    }
+
+    if (sceneDirector->getStage() == SimulationStage::Raining &&
+        sceneDirector->getStageElapsedSeconds() >= 1.5f) {
+        sceneDirector->transitionTo(SimulationStage::RiverFilling);
+    }
+
+    // The storm is finite: at most three early strikes establish the
+    // weather, then three deliberate meadow strikes happen after the
+    // vegetation has grown. B remains a manual demonstration shortcut.
+    CloudEmitter* lightningCloud = cloudEmitter ? cloudEmitter : ambientCloudEmitter;
+    const SimulationStage currentStage = sceneDirector->getStage();
+    const bool earlyStormStage = currentStage == SimulationStage::CloudFormation ||
+                                 currentStage == SimulationStage::Raining ||
+                                 currentStage == SimulationStage::RiverFilling ||
+                                 currentStage == SimulationStage::VegetationGrowing;
+    const bool automaticEarlyStrike = cloudEmitter && earlyStormStage &&
+        earlyGroundStrikeCount < 3 && nextLightningTime >= 0.0f &&
+        simulationTime >= nextLightningTime && !lightningSystem->isActive();
+    const bool automaticMeadowStrike = cloudEmitter &&
+        currentStage == SimulationStage::LightningStorm &&
+        vegetationGroundStrikeCount < 3 && nextLightningTime >= 0.0f &&
+        simulationTime >= nextLightningTime && !lightningSystem->isActive();
+
+    if (lightningCloud &&
+        (manualLightningRequested || automaticEarlyStrike || automaticMeadowStrike)) {
+        glm::vec3 strike;
+        if (automaticMeadowStrike) {
+            // Alternate strike targets between riverbanks.
+            const float alongTargets[] = { 0.76f, 0.86f, 0.94f };
+            const float sideTargets[] = { -180.0f, 205.0f, -125.0f };
+            const int target = vegetationGroundStrikeCount;
+            strike = riverWorldPoint(alongTargets[target], sideTargets[target], 2.0f);
+            ++vegetationGroundStrikeCount;
+            nextLightningTime = simulationTime + 3.2f;
+        } else {
+            const float strikeX = lightningCloud->emitter_pos.x - 110.0f
+                                + lightningRandom01() * 220.0f;
+            const float strikeZ = lightningCloud->emitter_pos.z - 70.0f
+                                + lightningRandom01() * 140.0f;
+            strike = glm::vec3(strikeX,
+                               volcano->surfaceHeightAt(strikeX, strikeZ) + 2.0f,
+                               strikeZ);
+            if (automaticEarlyStrike) {
+                ++earlyGroundStrikeCount;
+                nextLightningTime = simulationTime + 7.0f;
+            }
+        }
+        lightningSystem->trigger(simulationTime, lightningCloud->emitter_pos, strike);
+        manualLightningRequested = false;
+    }
+
+    // Strike the river after three ground impacts.
+    if (cloudEmitter && currentStage == SimulationStage::LightningStorm &&
+        vegetationGroundStrikeCount >= 3 &&
+        sceneDirector->getStageElapsedSeconds() >= 10.0f &&
+        !riverStrikeInFlight && !lightningSystem->isActive()) {
+        const float riverTargetAlong = 0.72f;
+        const glm::vec3 riverStrike = riverWorldPoint(riverTargetAlong, 0.0f, 2.4f);
+        electricRiverStrikeDistance = glm::mix(stats.riverInnerRadius,
+                                                stats.riverOuterRadius,
+                                                riverTargetAlong);
+        riverStrikeInFlight = true;
+        nextLightningTime = -1.0f;
+        lightningSystem->trigger(simulationTime, cloudEmitter->emitter_pos, riverStrike);
+    }
+
+    if (lightningSystem->consumeImpact()) {
+        const glm::vec3 strike = lightningSystem->strikePosition();
+        if (riverStrikeInFlight) {
+            riverStrikeInFlight = false;
+            electricRiverStartTime = lavaTime;
+            sceneDirector->transitionTo(SimulationStage::ElectrifiedRiver);
+        } else if (scorchPositions.size() < 8) {
+            scorchPositions.push_back(glm::vec2(strike.x, strike.z));
+            scorchRadii.push_back(50.0f + lightningRandom01() * 24.0f);
+            scorchStrengths.push_back(0.9f + lightningRandom01() * 0.1f);
+        }
+    }
+}
+
+// Create deterministic flora once the river has completely filled.
+static void startVegetationWhenRiverFull(float waterFill, float lavaTime,
+                                        const VolcanoStats& stats)
+{
+    // Flora is created when the river reaches full capacity.
+    if (!floraSpawned && waterFill >= 1.0f) {
+        floraSpawned = true;
+        floraGrowthStartTime = lavaTime;
+        sceneDirector->transitionTo(SimulationStage::VegetationGrowing);
+
+        // Placement must not depend on how many per-frame random values the
+        // particle systems consumed. Recreate the same local sequence for
+        // every run and restart, regardless of FPS or time scale.
+        std::mt19937 floraRandom(SIMULATION_RANDOM_SEED + 2u);
+        std::uniform_real_distribution<float> floraDistribution(0.0f, 1.0f);
+        auto floraRandom01 = [&]() {
+            return floraDistribution(floraRandom);
+        };
+
+        auto addFloraPart = [&](const glm::vec3& position,
+                                const glm::vec3& scale,
+                                const glm::vec3& color,
+                                float groundY,
+                                float delay,
+                                float duration,
+                                float swayAmount,
+                                bool useCylinder) {
+            floraProps.push_back({ position, scale, color, groundY, delay,
+                                   duration, floraRandom01() * 6.2831853f, swayAmount,
+                                   useCylinder });
+        };
+
+        // Offset from the river centre line and sample terrain height for placement.
+        auto riverBankSpot = [&](float alongRiver, float sideOffset) {
+            float distance = glm::mix(stats.riverInnerRadius,
+                                      stats.riverOuterRadius, alongRiver);
+            const float terrainHalfWidth = 1350.0f * 0.5f;
+            float rawCenterX = terrainHalfWidth * 0.03f
+                             * std::sin(distance * 0.02f + 1.37f);
+            float startRadius = stats.craterRadius * 1.05f;
+            float startBlend = glm::smoothstep(startRadius,
+                                                startRadius + startRadius * 0.6f,
+                                                distance);
+            float centerX = glm::mix(stats.craterCenter.x,
+                                     stats.craterCenter.x + rawCenterX,
+                                     startBlend);
+            glm::vec3 point(centerX + sideOffset,
+                            0.0f,
+                            stats.craterCenter.y + distance);
+            point.y = volcano->surfaceHeightAt(point.x, point.z);
+            return point;
+        };
+
+        const glm::vec3 flowerColors[] = {
+            glm::vec3(0.94f, 0.10f, 0.12f), // poppy red
+            glm::vec3(0.96f, 0.70f, 0.08f), // warm yellow
+            glm::vec3(0.96f, 0.34f, 0.58f)  // natural pink
+        };
+        const int FLOWER_COUNT = 72;
+        for (int i = 0; i < FLOWER_COUNT; ++i) {
+            // Keep flowers on the lower, grassy part of the river. Squaring
+            // the spread value leaves most blooms near the bank while still
+            // scattering some naturally farther into the meadow.
+            float alongRiver = 0.34f + floraRandom01() * 0.60f;
+            float bankSide = (i % 2 == 0) ? -1.0f : 1.0f;
+            float meadowSpread = floraRandom01();
+            float sideOffset = bankSide
+                             * (34.0f + meadowSpread * meadowSpread * 165.0f);
+            glm::vec3 pos = riverBankSpot(alongRiver, sideOffset);
+            float stemHeight = 5.5f + floraRandom01() * 3.0f;
+            // Flowers wait until the grass has completed its own growth.
+            float delay = GRASS_GROW_DURATION + 0.7f
+                        + floraRandom01() * 2.8f;
+            // Cycle colours to keep the palette balanced across runs.
+            glm::vec3 petalColor = flowerColors[i % 3];
+            addFloraPart(pos + glm::vec3(0.0f, stemHeight * 0.5f, 0.0f),
+                         glm::vec3(0.42f, stemHeight * 0.5f, 0.42f),
+                         glm::vec3(0.09f, 0.32f, 0.08f),
+                         pos.y, delay, 1.5f, 0.10f, true);
+
+            glm::vec3 bloomCenter = pos + glm::vec3(0.0f, stemHeight + 0.9f, 0.0f);
+            addFloraPart(bloomCenter, glm::vec3(1.35f, 0.88f, 1.35f),
+                         glm::vec3(0.96f, 0.66f, 0.06f),
+                         pos.y, delay + 0.55f, 1.5f, 0.28f, false);
+            for (int petal = 0; petal < 5; ++petal) {
+                float a = float(petal) * 1.2566371f;
+                glm::vec3 petalOffset(std::cos(a) * 2.05f,
+                                      0.14f,
+                                      std::sin(a) * 2.05f);
+                addFloraPart(bloomCenter + petalOffset,
+                             glm::vec3(1.65f, 0.60f, 1.12f),
+                             petalColor, pos.y,
+                             delay + 0.67f + petal * 0.045f,
+                             1.6f, 0.32f, false);
+            }
+        }
+
+        // A few medium trees grow farther into the meadow after the flowers.
+        // They use camera-facing cutout billboards, not primitive geometry.
+        const glm::vec3 treeTints[] = {
+            glm::vec3(0.92f, 1.00f, 0.91f),
+            glm::vec3(0.82f, 0.94f, 0.80f),
+            glm::vec3(1.00f, 0.95f, 0.82f)
+        };
+        const int TREE_COUNT = 18;
+        for (int i = 0; i < TREE_COUNT; ++i) {
+            float alongRiver = 0.42f + floraRandom01() * 0.54f;
+            float side = (i % 2 == 0) ? -1.0f : 1.0f;
+            float sideOffset = side * (135.0f + floraRandom01() * 235.0f);
+            glm::vec3 base = riverBankSpot(alongRiver, sideOffset);
+            float height = 52.0f + floraRandom01() * 19.0f;
+            float width = height * (0.70f + floraRandom01() * 0.10f);
+            const bool flowering = (i % 3) == 1;
+            const glm::vec3 tint = flowering
+                ? glm::vec3(0.96f, 0.94f, 0.91f)
+                : treeTints[i % 3];
+            treeProps.push_back({ base, glm::vec2(width, height),
+                                  tint,
+                                  TREE_GROW_DELAY + floraRandom01() * 2.0f,
+                                  floraRandom01() * 6.2831853f,
+                                  flowering });
+        }
+    }
+}
+
+// Complete the storm, electrified river and calm-night stages.
+static void advanceFinalStages(float simulationTime, const VolcanoStats& stats)
+{
+    if (sceneDirector->getStage() == SimulationStage::VegetationGrowing &&
+        sceneDirector->getStageElapsedSeconds() >= 18.5f) {
+        // Let the completed meadow remain on screen while several bolts
+        // char the real grass before the final water strike.
+        // Earlier storm scars are cleared here: otherwise old black masks
+        // become newly conspicuous as green blades grow, falsely suggesting
+        // damage without a simultaneous visible strike.
+        scorchPositions.clear();
+        scorchRadii.clear();
+        scorchStrengths.clear();
+        nextLightningTime = simulationTime + 1.0f;
+        vegetationGroundStrikeCount = 0;
+        sceneDirector->transitionTo(SimulationStage::LightningStorm);
+    }
+
+    if (sceneDirector->getStage() == SimulationStage::ElectrifiedRiver &&
+        sceneDirector->getStageElapsedSeconds() >= ELECTRIC_RIVER_DURATION + 0.8f) {
+        if (!calmSmokeEmitter) {
+            const glm::vec3 craterPos(stats.craterCenter.x,
+                                       stats.craterTop - 132.0f,
+                                       stats.craterCenter.y);
+            calmSmokeEmitter = new SmokeEmitter(
+                particleQuad, 170, craterPos,
+                22.0f, 5.0f, 18.0f,
+                7.0f, 4.0f, 0.055f);
+            calmSmokeEmitter->plumeHeight = 190.0f;
+            calmSmokeEmitter->turbulence = 0.20f;
+        }
+        sceneDirector->transitionTo(SimulationStage::CalmNight);
+    }
+
+    if (sceneDirector->getStage() == SimulationStage::CalmNight &&
+        sceneDirector->getStageElapsedSeconds() >= CALM_NIGHT_DURATION) {
+        sceneDirector->transitionTo(SimulationStage::Complete);
+    }
+}
+
 void mainLoop()
 {
     double lastTime = glfwGetTime();
@@ -772,68 +1518,7 @@ void mainLoop()
         ImGui::NewFrame();
 #endif
 
-        // --- Time controller (Part B.5): P pauses/resumes, [ / ] slow down / speed up,
-        // 0 resets to 1x. Edge-triggered so a held key doesn't repeat every frame.
-        if (sceneDirector) {
-            static bool pKeyWasDown = false;
-            bool pKeyIsDown = glfwGetKey(window, GLFW_KEY_P) == GLFW_PRESS;
-            if (pKeyIsDown && !pKeyWasDown) {
-                sceneDirector->setPaused(!sceneDirector->isPaused());
-            }
-            pKeyWasDown = pKeyIsDown;
-
-            static bool slowKeyWasDown = false;
-            bool slowKeyIsDown = glfwGetKey(window, GLFW_KEY_LEFT_BRACKET) == GLFW_PRESS;
-            if (slowKeyIsDown && !slowKeyWasDown) {
-                sceneDirector->setTimeScale(sceneDirector->getTimeScale() * 0.5f);
-            }
-            slowKeyWasDown = slowKeyIsDown;
-
-            static bool fastKeyWasDown = false;
-            bool fastKeyIsDown = glfwGetKey(window, GLFW_KEY_RIGHT_BRACKET) == GLFW_PRESS;
-            if (fastKeyIsDown && !fastKeyWasDown) {
-                sceneDirector->setTimeScale(sceneDirector->getTimeScale() * 2.0f);
-            }
-            fastKeyWasDown = fastKeyIsDown;
-
-            static bool resetKeyWasDown = false;
-            bool resetKeyIsDown = glfwGetKey(window, GLFW_KEY_0) == GLFW_PRESS;
-            if (resetKeyIsDown && !resetKeyWasDown) {
-                sceneDirector->setTimeScale(1.0f);
-            }
-            resetKeyWasDown = resetKeyIsDown;
-
-            static bool restartKeyWasDown = false;
-            bool restartKeyIsDown = glfwGetKey(window, GLFW_KEY_R) == GLFW_PRESS;
-            if (restartKeyIsDown && !restartKeyWasDown) {
-                resetSimulation(currentTime);
-            }
-            restartKeyWasDown = restartKeyIsDown;
-
-            static bool cameraResetKeyWasDown = false;
-            bool cameraResetKeyIsDown = glfwGetKey(window, GLFW_KEY_C) == GLFW_PRESS;
-            if (cameraResetKeyIsDown && !cameraResetKeyWasDown) {
-                camera->resetToEstablishingShot();
-            }
-            cameraResetKeyWasDown = cameraResetKeyIsDown;
-
-            static bool lightningKeyWasDown = false;
-            bool lightningKeyIsDown = glfwGetKey(window, GLFW_KEY_B) == GLFW_PRESS;
-            if (lightningKeyIsDown && !lightningKeyWasDown) {
-                manualLightningRequested = true;
-            }
-            lightningKeyWasDown = lightningKeyIsDown;
-
-#if defined(ELEMENTAL_ENABLE_IMGUI)
-            static bool uiKeyWasDown = false;
-            bool uiKeyIsDown = glfwGetKey(window, GLFW_KEY_F1) == GLFW_PRESS;
-            if (uiKeyIsDown && !uiKeyWasDown) {
-                gShowHud = !gShowHud;
-                camera->setMouseLookEnabled(!gShowHud);
-            }
-            uiKeyWasDown = uiKeyIsDown;
-#endif
-        }
+        handleKeyboardInput(currentTime);
 
         if (sceneDirector) {
             sceneDirector->update(currentTime, deltaTime);
@@ -848,93 +1533,15 @@ void mainLoop()
             ? sceneDirector->getScaledDeltaSeconds(deltaTime)
             : deltaTime;
 
-        // Every physical effect consumes scaled simulation time. Pausing now
-        // freezes smoke, rain and lightning motion as well as the event timeline.
-        // SceneDirector defines lavaTimeSeconds >= 0 at m_lavaStartSeconds (end of shake).
-        float lavaTimeForSmoke = sceneDirector ? sceneDirector->getLavaTimeSeconds()
-                                               : static_cast<float>(currentTime);
-        if (smokeEmitter && sceneDirector && lavaTimeForSmoke >= 0.0f) {
-            smokeEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
-        }
-        if (calmSmokeEmitter) {
-            calmSmokeEmitter->updateParticles(simulationTime, simulationDelta,
-                                              camera->position);
-        }
-        if (ambientCloudEmitter) {
-            ambientCloudEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
-        }
-        if (ashEmitter) {
-            // Recycle particles at the moving end-to-start cooling boundary.
-            // Older puffs remain behind, so the smoke clearly traces the same
-            // progressive transformation visible on the lava surface.
-            if (lavaCoolStartTime >= 0.0f && lavaTimeForSmoke >= 0.0f) {
-                ashEmitter->followMovingSource(
-                    coolingFrontWorldPosition(lavaTimeForSmoke),
-                    simulationDelta,
-                    210.0f);
-            }
-            ashEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
-        }
-        if (cloudEmitter) {
-            cloudEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
-        }
-        if (rainEmitter) {
-            rainEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
-        }
-        if (lightningSystem) lightningSystem->update(simulationTime, simulationDelta);
+        const float lavaTimeForSmoke = updateParticleSystems(
+            simulationTime, simulationDelta, currentTime);
 
-        // Update light
-        moonlight->update();
-
-        float calmProgress = 0.0f;
-        if (sceneDirector) {
-            if (sceneDirector->getStage() == SimulationStage::CalmNight) {
-                calmProgress = glm::smoothstep(0.0f, CALM_NIGHT_DURATION,
-                                                sceneDirector->getStageElapsedSeconds());
-            } else if (sceneDirector->getStage() == SimulationStage::Complete) {
-                calmProgress = 1.0f;
-            }
-        }
-
-        // The ending stays nocturnal, but clearer air allows slightly warmer,
-        // cleaner moonlight to reveal the recovered landscape.
-        moonlight->La = glm::mix(glm::vec4(0.040f, 0.040f, 0.200f, 1.0f),
-                                 glm::vec4(0.052f, 0.058f, 0.175f, 1.0f),
-                                 calmProgress);
-        moonlight->Ld = glm::mix(glm::vec4(0.34f, 0.50f, 0.76f, 1.0f),
-                                 glm::vec4(0.40f, 0.53f, 0.72f, 1.0f),
-                                 calmProgress);
-        moonlight->Ls = glm::mix(glm::vec4(0.68f, 0.77f, 0.90f, 1.0f),
-                                 glm::vec4(0.74f, 0.81f, 0.91f, 1.0f),
-                                 calmProgress);
+        const float calmProgress = updateMoonlight();
 
         float lavaTime = sceneDirector ? sceneDirector->getLavaTimeSeconds()
                                        : static_cast<float>(currentTime);
 
-        // --- Shadow pass: render the volcano's depth from the moonlight's POV ---
-        {
-            mat4 lightView = moonlight->viewMatrix;
-            mat4 lightProjection = moonlight->projectionMatrix;
-            mat4 identity = mat4(1.0);
-
-            glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-            glViewport(0, 0, SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
-            glClear(GL_DEPTH_BUFFER_BIT);
-
-            glUseProgram(depthShaderProgram);
-            glUniformMatrix4fv(depthMLocation, 1, GL_FALSE, &identity[0][0]);
-            glUniformMatrix4fv(depthVLocation, 1, GL_FALSE, &lightView[0][0]);
-            glUniformMatrix4fv(depthPLocation, 1, GL_FALSE, &lightProjection[0][0]);
-            glUniform1f(depthLavaTimeLocation, lavaTime);
-            glUniform1f(depthCraterRadiusLocation, stats.craterRadius);
-
-            volcano->Draw();
-
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            // GLFW window units and framebuffer pixels differ on Retina/HiDPI
-            // displays, so always restore the actual drawable size.
-            glViewport(0, 0, framebufferWidth, framebufferHeight);
-        }
+        renderShadowMap(lavaTime, framebufferWidth, framebufferHeight);
 
         if (firstFrameDiagnostics) {
             throwOnOpenGLError("first shadow pass");
@@ -953,9 +1560,8 @@ void mainLoop()
             skybox->Draw(viewMatrix, projectionMatrix,
                          lightningSystem ? lightningSystem->flashStrength() : 0.0f,
                          simulationTime,
-                         // The moon disc is composed for the establishing shot.
-                         // The terrain light and shadow pass still share one
-                         // physically consistent directional-light vector.
+                         // Moon disc placement is fixed for the establishing shot.
+                         // Terrain lighting and shadows share a separate direction.
                          glm::vec3(-0.35f, 0.15f, -0.925f),
                          calmProgress);
         }
@@ -982,8 +1588,7 @@ void mainLoop()
         glBindTexture(GL_TEXTURE_2D, depthMapTexture);
         glUniform1i(volcanoUniforms.shadowMap, 1);
 
-        // Lab 3 animated overlay. Unit 2 is independent of the terrain and
-        // shadow textures, and a zero blend restores the procedural result.
+        // A zero blend restores the procedural lava pattern.
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, lavaTexture);
         glUniform1i(volcanoUniforms.lavaTexture, 2);
@@ -1001,6 +1606,7 @@ void mainLoop()
 
         // Send time uniform
         glUniform1f(volcanoUniforms.lavaTime, lavaTime);
+        glUniform1f(volcanoUniforms.lavaFlowSpeed, LAVA_FLOW_SPEED);
 
         // Seed the cracks before eruption; each starts on the lava-time clock.
         if (!gCracksCreated && lavaTime > -1.0f) {
@@ -1050,127 +1656,8 @@ void mainLoop()
         glUniform2f(volcanoUniforms.craterCenter,
                     stats.craterCenter.x, stats.craterCenter.y);
 
-        // State-driven domino chain. Each transition creates the next visible
-        // effect once, then the stage timer controls the following transition.
-        if (sceneDirector->getStage() == SimulationStage::LavaFlowing && lavaTime >= 0.0f) {
-            float flowHead = lavaTime * LAVA_FLOW_SPEED;
-            if (flowHead >= stats.riverOuterRadius) {
-                lavaCoolStartTime = lavaTime;
+        advanceElementalEvents(lavaTime, simulationTime, stats);
 
-                glm::vec3 riverEndPos = coolingFrontWorldPosition(lavaTime);
-                ashEmitter = new SmokeEmitter(
-                    particleQuad, 1300, riverEndPos,
-                    14.0f,    // compact band around the cooling boundary
-                    3.0f, 11.0f,
-                    38.0f, 12.0f,
-                    0.12f);
-                ashEmitter->plumeHeight = 420.0f;
-                sceneDirector->transitionTo(SimulationStage::SmokeAndAsh);
-            }
-        }
-
-        if (sceneDirector->getStage() == SimulationStage::SmokeAndAsh &&
-            sceneDirector->getStageElapsedSeconds() >= CLOUD_FORM_DELAY) {
-            // The ash gathers into a broad layered bank over the river/volcano
-            // corridor, rather than one compact ball at the old impact point.
-            glm::vec3 cloudPos(
-                glm::mix(stats.craterCenter.x, stats.riverEndXZ.x, 0.48f),
-                stats.craterTop + 230.0f,
-                glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
-            cloudEmitter = new CloudEmitter(
-                particleQuad, 110, cloudPos,
-                285.0f, 72.0f, 22.0f, 50.0f, 1.15f, 5.0f);
-            sceneDirector->transitionTo(SimulationStage::CloudFormation);
-            nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
-        }
-
-        if (sceneDirector->getStage() == SimulationStage::CloudFormation &&
-            sceneDirector->getStageElapsedSeconds() >= RAIN_START_DELAY) {
-            rainStartTime = lavaTime;
-            rainEmitter = new RainEmitter(particleQuad, 1200, cloudEmitter->emitter_pos,
-                                          stats.riverEndY, 285.0f);
-            sceneDirector->transitionTo(SimulationStage::Raining);
-        }
-
-        if (sceneDirector->getStage() == SimulationStage::Raining &&
-            sceneDirector->getStageElapsedSeconds() >= 1.5f) {
-            sceneDirector->transitionTo(SimulationStage::RiverFilling);
-        }
-
-        // The storm is finite: at most three early strikes establish the
-        // weather, then three deliberate meadow strikes happen after the
-        // vegetation has grown. B remains a manual demonstration shortcut.
-        CloudEmitter* lightningCloud = cloudEmitter ? cloudEmitter : ambientCloudEmitter;
-        const SimulationStage currentStage = sceneDirector->getStage();
-        const bool earlyStormStage = currentStage == SimulationStage::CloudFormation ||
-                                     currentStage == SimulationStage::Raining ||
-                                     currentStage == SimulationStage::RiverFilling ||
-                                     currentStage == SimulationStage::VegetationGrowing;
-        const bool automaticEarlyStrike = cloudEmitter && earlyStormStage &&
-            earlyGroundStrikeCount < 3 && nextLightningTime >= 0.0f &&
-            simulationTime >= nextLightningTime && !lightningSystem->isActive();
-        const bool automaticMeadowStrike = cloudEmitter &&
-            currentStage == SimulationStage::LightningStorm &&
-            vegetationGroundStrikeCount < 3 && nextLightningTime >= 0.0f &&
-            simulationTime >= nextLightningTime && !lightningSystem->isActive();
-
-        if (lightningCloud &&
-            (manualLightningRequested || automaticEarlyStrike || automaticMeadowStrike)) {
-            glm::vec3 strike;
-            if (automaticMeadowStrike) {
-                // Alternating banks make the new black patches readable across
-                // the grown meadow instead of stacking all strikes in one spot.
-                const float alongTargets[] = { 0.76f, 0.86f, 0.94f };
-                const float sideTargets[] = { -180.0f, 205.0f, -125.0f };
-                const int target = vegetationGroundStrikeCount;
-                strike = riverWorldPoint(alongTargets[target], sideTargets[target], 2.0f);
-                ++vegetationGroundStrikeCount;
-                nextLightningTime = simulationTime + 3.2f;
-            } else {
-                const float strikeX = lightningCloud->emitter_pos.x - 110.0f
-                                    + lightningRandom01() * 220.0f;
-                const float strikeZ = lightningCloud->emitter_pos.z - 70.0f
-                                    + lightningRandom01() * 140.0f;
-                strike = glm::vec3(strikeX,
-                                   volcano->surfaceHeightAt(strikeX, strikeZ) + 2.0f,
-                                   strikeZ);
-                if (automaticEarlyStrike) {
-                    ++earlyGroundStrikeCount;
-                    nextLightningTime = simulationTime + 7.0f;
-                }
-            }
-            lightningSystem->trigger(simulationTime, lightningCloud->emitter_pos, strike);
-            manualLightningRequested = false;
-        }
-
-        // Once the meadow has visibly taken three hits, aim the final bolt at
-        // the centre of the full river. Its impact starts the mixing effect.
-        if (cloudEmitter && currentStage == SimulationStage::LightningStorm &&
-            vegetationGroundStrikeCount >= 3 &&
-            sceneDirector->getStageElapsedSeconds() >= 10.0f &&
-            !riverStrikeInFlight && !lightningSystem->isActive()) {
-            const float riverTargetAlong = 0.72f;
-            const glm::vec3 riverStrike = riverWorldPoint(riverTargetAlong, 0.0f, 2.4f);
-            electricRiverStrikeDistance = glm::mix(stats.riverInnerRadius,
-                                                    stats.riverOuterRadius,
-                                                    riverTargetAlong);
-            riverStrikeInFlight = true;
-            nextLightningTime = -1.0f;
-            lightningSystem->trigger(simulationTime, cloudEmitter->emitter_pos, riverStrike);
-        }
-
-        if (lightningSystem->consumeImpact()) {
-            const glm::vec3 strike = lightningSystem->strikePosition();
-            if (riverStrikeInFlight) {
-                riverStrikeInFlight = false;
-                electricRiverStartTime = lavaTime;
-                sceneDirector->transitionTo(SimulationStage::ElectrifiedRiver);
-            } else if (scorchPositions.size() < 8) {
-                scorchPositions.push_back(glm::vec2(strike.x, strike.z));
-                scorchRadii.push_back(50.0f + lightningRandom01() * 24.0f);
-                scorchStrengths.push_back(0.9f + lightningRandom01() * 0.1f);
-            }
-        }
         glUniform1i(volcanoUniforms.scorchCount,
                     static_cast<GLint>(scorchPositions.size()));
         if (!scorchPositions.empty()) {
@@ -1184,7 +1671,7 @@ void mainLoop()
         glUniform1f(volcanoUniforms.lavaCoolStart, lavaCoolStartTime);
         glUniform1f(volcanoUniforms.lavaCoolDuration, LAVA_COOL_DURATION);
 
-        // Domino chain (Part B.4c): river channel fills with water as rain falls.
+        // Rain gradually fills the river channel.
         float waterFill = 0.0f;
         if (rainEmitter && rainStartTime >= 0.0f) {
             waterFill = glm::clamp((lavaTime - rainStartTime) / WATER_FILL_DURATION, 0.0f, 1.0f);
@@ -1213,166 +1700,9 @@ void mainLoop()
         glUniform1f(volcanoUniforms.electricDuration, ELECTRIC_RIVER_DURATION);
         glUniform1f(volcanoUniforms.electricStrikeDistance, electricRiverStrikeDistance);
 
-        // Domino chain (Part B.4d): the broad grass corridor has finished growing
-        // when the river becomes full. Small flowers then appear along both banks;
-        // trees are deliberately left for the next vegetation pass.
-        if (!floraSpawned && waterFill >= 1.0f) {
-            floraSpawned = true;
-            floraGrowthStartTime = lavaTime;
-            sceneDirector->transitionTo(SimulationStage::VegetationGrowing);
+        startVegetationWhenRiverFull(waterFill, lavaTime, stats);
 
-            // Placement must not depend on how many per-frame random values the
-            // particle systems consumed. Recreate the same local sequence for
-            // every run and restart, regardless of FPS or time scale.
-            std::mt19937 floraRandom(SIMULATION_RANDOM_SEED + 2u);
-            std::uniform_real_distribution<float> floraDistribution(0.0f, 1.0f);
-            auto floraRandom01 = [&]() {
-                return floraDistribution(floraRandom);
-            };
-
-            auto addFloraPart = [&](const glm::vec3& position,
-                                    const glm::vec3& scale,
-                                    const glm::vec3& color,
-                                    float groundY,
-                                    float delay,
-                                    float duration,
-                                    float swayAmount,
-                                    bool useCylinder) {
-                floraProps.push_back({ position, scale, color, groundY, delay,
-                                       duration, floraRandom01() * 6.2831853f, swayAmount,
-                                       useCylinder });
-            };
-
-            // Sample the same curved centre line used to carve the river, then
-            // move a short distance left or right. Sampling the generated height
-            // field keeps every stem rooted on its local bank instead of floating.
-            auto riverBankSpot = [&](float alongRiver, float sideOffset) {
-                float distance = glm::mix(stats.riverInnerRadius,
-                                          stats.riverOuterRadius, alongRiver);
-                const float terrainHalfWidth = 1350.0f * 0.5f;
-                float rawCenterX = terrainHalfWidth * 0.03f
-                                 * std::sin(distance * 0.02f + 1.37f);
-                float startRadius = stats.craterRadius * 1.05f;
-                float startBlend = glm::smoothstep(startRadius,
-                                                    startRadius + startRadius * 0.6f,
-                                                    distance);
-                float centerX = glm::mix(stats.craterCenter.x,
-                                         stats.craterCenter.x + rawCenterX,
-                                         startBlend);
-                glm::vec3 point(centerX + sideOffset,
-                                0.0f,
-                                stats.craterCenter.y + distance);
-                point.y = volcano->surfaceHeightAt(point.x, point.z);
-                return point;
-            };
-
-            const glm::vec3 flowerColors[] = {
-                glm::vec3(0.94f, 0.10f, 0.12f), // poppy red
-                glm::vec3(0.96f, 0.70f, 0.08f), // warm yellow
-                glm::vec3(0.96f, 0.34f, 0.58f)  // natural pink
-            };
-            const int FLOWER_COUNT = 72;
-            for (int i = 0; i < FLOWER_COUNT; ++i) {
-                // Keep flowers on the lower, grassy part of the river. Squaring
-                // the spread value leaves most blooms near the bank while still
-                // scattering some naturally farther into the meadow.
-                float alongRiver = 0.34f + floraRandom01() * 0.60f;
-                float bankSide = (i % 2 == 0) ? -1.0f : 1.0f;
-                float meadowSpread = floraRandom01();
-                float sideOffset = bankSide
-                                 * (34.0f + meadowSpread * meadowSpread * 165.0f);
-                glm::vec3 pos = riverBankSpot(alongRiver, sideOffset);
-                float stemHeight = 5.5f + floraRandom01() * 3.0f;
-                // Flowers wait until the grass has completed its own growth.
-                float delay = GRASS_GROW_DURATION + 0.7f
-                            + floraRandom01() * 2.8f;
-                // Cycling the palette guarantees a natural balance instead of
-                // allowing one random color to dominate a particular run.
-                glm::vec3 petalColor = flowerColors[i % 3];
-                addFloraPart(pos + glm::vec3(0.0f, stemHeight * 0.5f, 0.0f),
-                             glm::vec3(0.42f, stemHeight * 0.5f, 0.42f),
-                             glm::vec3(0.09f, 0.32f, 0.08f),
-                             pos.y, delay, 1.5f, 0.10f, true);
-
-                glm::vec3 bloomCenter = pos + glm::vec3(0.0f, stemHeight + 0.9f, 0.0f);
-                addFloraPart(bloomCenter, glm::vec3(1.35f, 0.88f, 1.35f),
-                             glm::vec3(0.96f, 0.66f, 0.06f),
-                             pos.y, delay + 0.55f, 1.5f, 0.28f, false);
-                for (int petal = 0; petal < 5; ++petal) {
-                    float a = float(petal) * 1.2566371f;
-                    glm::vec3 petalOffset(std::cos(a) * 2.05f,
-                                          0.14f,
-                                          std::sin(a) * 2.05f);
-                    addFloraPart(bloomCenter + petalOffset,
-                                 glm::vec3(1.65f, 0.60f, 1.12f),
-                                 petalColor, pos.y,
-                                 delay + 0.67f + petal * 0.045f,
-                                 1.6f, 0.32f, false);
-                }
-            }
-
-            // A few medium trees grow farther into the meadow after the flowers.
-            // They use camera-facing cutout billboards, not primitive geometry.
-            const glm::vec3 treeTints[] = {
-                glm::vec3(0.92f, 1.00f, 0.91f),
-                glm::vec3(0.82f, 0.94f, 0.80f),
-                glm::vec3(1.00f, 0.95f, 0.82f)
-            };
-            const int TREE_COUNT = 18;
-            for (int i = 0; i < TREE_COUNT; ++i) {
-                float alongRiver = 0.42f + floraRandom01() * 0.54f;
-                float side = (i % 2 == 0) ? -1.0f : 1.0f;
-                float sideOffset = side * (135.0f + floraRandom01() * 235.0f);
-                glm::vec3 base = riverBankSpot(alongRiver, sideOffset);
-                float height = 52.0f + floraRandom01() * 19.0f;
-                float width = height * (0.70f + floraRandom01() * 0.10f);
-                const bool flowering = (i % 3) == 1;
-                const glm::vec3 tint = flowering
-                    ? glm::vec3(0.96f, 0.94f, 0.91f)
-                    : treeTints[i % 3];
-                treeProps.push_back({ base, glm::vec2(width, height),
-                                      tint,
-                                      TREE_GROW_DELAY + floraRandom01() * 2.0f,
-                                      floraRandom01() * 6.2831853f,
-                                      flowering });
-            }
-        }
-
-        if (sceneDirector->getStage() == SimulationStage::VegetationGrowing &&
-            sceneDirector->getStageElapsedSeconds() >= 18.5f) {
-            // Let the completed meadow remain on screen while several bolts
-            // char the real grass before the final water strike.
-            // Earlier storm scars are cleared here: otherwise old black masks
-            // become newly conspicuous as green blades grow, falsely suggesting
-            // damage without a simultaneous visible strike.
-            scorchPositions.clear();
-            scorchRadii.clear();
-            scorchStrengths.clear();
-            nextLightningTime = simulationTime + 1.0f;
-            vegetationGroundStrikeCount = 0;
-            sceneDirector->transitionTo(SimulationStage::LightningStorm);
-        }
-
-        if (sceneDirector->getStage() == SimulationStage::ElectrifiedRiver &&
-            sceneDirector->getStageElapsedSeconds() >= ELECTRIC_RIVER_DURATION + 0.8f) {
-            if (!calmSmokeEmitter) {
-                const glm::vec3 craterPos(stats.craterCenter.x,
-                                           stats.craterTop - 132.0f,
-                                           stats.craterCenter.y);
-                calmSmokeEmitter = new SmokeEmitter(
-                    particleQuad, 170, craterPos,
-                    22.0f, 5.0f, 18.0f,
-                    7.0f, 4.0f, 0.055f);
-                calmSmokeEmitter->plumeHeight = 190.0f;
-                calmSmokeEmitter->turbulence = 0.20f;
-            }
-            sceneDirector->transitionTo(SimulationStage::CalmNight);
-        }
-
-        if (sceneDirector->getStage() == SimulationStage::CalmNight &&
-            sceneDirector->getStageElapsedSeconds() >= CALM_NIGHT_DURATION) {
-            sceneDirector->transitionTo(SimulationStage::Complete);
-        }
+        advanceFinalStages(simulationTime, stats);
 
         moonlight->uploadLight(volcanoLightUniforms);
 
@@ -1382,268 +1712,17 @@ void mainLoop()
         glUniform4f(volcanoUniforms.materialSpecular,
                     volcanoMaterial.Ks.r, volcanoMaterial.Ks.g, volcanoMaterial.Ks.b, volcanoMaterial.Ks.a);
         glUniform1f(volcanoUniforms.materialShininess, volcanoMaterial.Ns);
-        glUniform1i(volcanoUniforms.useClassicPhong, gUseClassicPhong ? 1 : 0);
 
         // draw volcano
         volcano->Draw();
 
-        // Domino chain (Part B.4d): actual grass blades grow only after the river
-        // is full; the flower geometry is added after the grass is complete.
-        if ((grassField && grassGrowth > 0.0f) || !floraProps.empty()) {
-            glUseProgram(propShaderProgram);
-            glUniformMatrix4fv(propVLoc, 1, GL_FALSE, &viewMatrix[0][0]);
-            glUniformMatrix4fv(propPLoc, 1, GL_FALSE, &projectionMatrix[0][0]);
-            glUniform3fv(propCameraLocation, 1, &camera->position[0]);
-            glUniform1f(propLightningLocation,
-                        lightningSystem ? lightningSystem->flashStrength() : 0.0f);
-            glUniform1i(propUseClassicPhongLocation, gUseClassicPhong ? 1 : 0);
-            glUniform1i(propScorchCountLocation,
-                        static_cast<GLint>(scorchPositions.size()));
-            if (!scorchPositions.empty()) {
-                glUniform2fv(propScorchPositionsLocation,
-                             static_cast<GLsizei>(scorchPositions.size()),
-                             &scorchPositions[0].x);
-                glUniform1fv(propScorchRadiiLocation,
-                             static_cast<GLsizei>(scorchRadii.size()),
-                             &scorchRadii[0]);
-                glUniform1fv(propScorchStrengthsLocation,
-                             static_cast<GLsizei>(scorchStrengths.size()),
-                             &scorchStrengths[0]);
-            }
-            glUniform1f(propTimeLoc, simulationTime);
-            moonlight->uploadLight(propLightUniforms);
+        renderVegetation(grassGrowth, lavaTime, simulationTime,
+                         viewMatrix, projectionMatrix);
 
-            if (grassField && grassGrowth > 0.0f) {
-                const mat4 grassModel(1.0f); // blade vertices are already in world space
-                glUniform1i(propGrassPassLoc, 1);
-                glUniform1i(propInstancedPassLoc, 0);
-                glUniform1f(propGrassGrowthLoc, grassGrowth);
-                glUniformMatrix4fv(propMLoc, 1, GL_FALSE, &grassModel[0][0]);
-                glUniform3f(propColorLoc, 0.20f, 0.52f, 0.095f);
-                grassField->bind();
-                grassField->draw();
-            }
+        renderAtmosphereAndLightning(lavaTimeForSmoke, lavaTime, calmProgress,
+                                     viewMatrix, projectionMatrix);
 
-            glUniform1i(propGrassPassLoc, 0);
-
-            // Repeated flower pieces are sent as two instance batches (stems and
-            // blooms), reducing the fully grown meadow from 504 prop draw calls
-            // to two while preserving the same growth and breeze animation.
-            cylinderPropMatrices.clear();
-            cylinderPropColors.clear();
-            spherePropMatrices.clear();
-            spherePropColors.clear();
-            for (const auto& prop : floraProps) {
-                float age = lavaTime - floraGrowthStartTime - prop.growthDelay;
-                float growth = glm::smoothstep(0.0f, prop.growthDuration, age);
-                if (growth <= 0.0f) continue;
-                glm::vec3 growingPosition = prop.position;
-                growingPosition.y = prop.groundY
-                                  + (prop.position.y - prop.groundY) * growth;
-                growingPosition.x += std::sin(simulationTime * 0.62f + prop.swayPhase)
-                                   * prop.swayAmount * growth;
-                mat4 propModel = glm::translate(mat4(1.0f), growingPosition)
-                               * glm::scale(mat4(1.0f), prop.scale * growth);
-                if (prop.useCylinder) {
-                    cylinderPropMatrices.push_back(propModel);
-                    cylinderPropColors.push_back(prop.color);
-                } else {
-                    spherePropMatrices.push_back(propModel);
-                    spherePropColors.push_back(prop.color);
-                }
-            }
-            glUniform1i(propInstancedPassLoc, 1);
-            propCylinderRenderer->draw(cylinderPropMatrices, cylinderPropColors);
-            propSphereRenderer->draw(spherePropMatrices, spherePropColors);
-            glUniform1i(propInstancedPassLoc, 0);
-        }
-
-        // Trees are alpha-cutout cylindrical billboards. Each quad turns only
-        // around world Y, so trunks stay vertical while always facing the camera.
-        if (!treeProps.empty()) {
-            glUseProgram(treeShaderProgram);
-            glUniformMatrix4fv(treeVLoc, 1, GL_FALSE, &viewMatrix[0][0]);
-            glUniformMatrix4fv(treePLoc, 1, GL_FALSE, &projectionMatrix[0][0]);
-            glUniform3fv(treeCameraLoc, 1, &camera->position[0]);
-            glUniform1f(treeTimeLoc, simulationTime);
-            glUniform1f(treeLightningLoc,
-                        lightningSystem ? lightningSystem->flashStrength() : 0.0f);
-            glActiveTexture(GL_TEXTURE0);
-            glUniform1i(treeTextureLoc, 0);
-            particleQuad->bind();
-
-            // Two texture passes keep the renderer simple and avoid rebinding
-            // for every tree while supporting both green and flowering species.
-            for (int speciesPass = 0; speciesPass < 2; ++speciesPass) {
-                const bool floweringPass = speciesPass == 1;
-                glBindTexture(GL_TEXTURE_2D,
-                              floweringPass ? almondTreeTexture : treeTexture);
-                for (const auto& tree : treeProps) {
-                    if (tree.flowering != floweringPass) continue;
-                    float age = lavaTime - floraGrowthStartTime - tree.growthDelay;
-                    float growth = glm::smoothstep(0.0f, TREE_GROW_DURATION, age);
-                    if (growth <= 0.0f) continue;
-                    glUniform3fv(treeBaseLoc, 1, &tree.basePosition[0]);
-                    glUniform2fv(treeSizeLoc, 1, &tree.size[0]);
-                    glUniform3fv(treeTintLoc, 1, &tree.tint[0]);
-                    glUniform1f(treeGrowthLoc, growth);
-                    glUniform1f(treeSwayLoc, tree.swayPhase);
-                    particleQuad->draw();
-                }
-            }
-            glBindTexture(GL_TEXTURE_2D, 0);
-        }
-
-        // Draw smoke/ash/cloud last (transparent)
-        bool drawSmoke = smokeEmitter && sceneDirector && lavaTimeForSmoke >= 0.0f;
-        if (drawSmoke || calmSmokeEmitter || ambientCloudEmitter || ashEmitter ||
-            cloudEmitter || rainEmitter) {
-            glDepthMask(GL_FALSE);
-
-            glUseProgram(particleShaderProgram);
-            mat4 PV = projectionMatrix * viewMatrix;
-            glUniformMatrix4fv(particlePVLocation, 1, GL_FALSE, &PV[0][0]);
-
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, smokeTexture);
-            glUniform1i(particleTextureSampler, 0);
-
-            // Each emitter shares the smoke texture but gets its own tint + opacity so
-            // the four stages read distinctly: grey volcano smoke, dark ash, pale cloud,
-            // bright blue rain.
-            if (drawSmoke) {
-                glUniform3f(particleTintLocation, 0.255f, 0.25f, 0.26f);
-                const float heavySmokeFade = 1.0f
-                    - glm::smoothstep(0.0f, 0.58f, calmProgress);
-                glUniform1f(particleAlphaLocation, 0.27f * heavySmokeFade);
-                glUniform2f(particleShapeScaleLocation, 1.10f, 1.0f);
-                glUniform1f(particlePuffinessLocation, 1.0f);
-                glUniform1f(particleShearLocation, 0.0f);
-                smokeEmitter->renderParticles();
-            }
-            if (calmSmokeEmitter) {
-                const float steamFormation = glm::smoothstep(0.06f, 0.82f,
-                                                              calmProgress);
-                glUniform3f(particleTintLocation, 0.84f, 0.85f, 0.88f);
-                glUniform1f(particleAlphaLocation, 0.15f * steamFormation);
-                glUniform2f(particleShapeScaleLocation, 0.82f, 0.94f);
-                glUniform1f(particlePuffinessLocation, 0.94f);
-                glUniform1f(particleShearLocation, 0.0f);
-                calmSmokeEmitter->renderParticles();
-            }
-            if (ambientCloudEmitter) {
-                glUniform3f(particleTintLocation, 0.41f, 0.43f, 0.50f);
-                glUniform1f(particleAlphaLocation,
-                            glm::mix(0.30f, 0.035f, calmProgress));
-                glUniform2f(particleShapeScaleLocation, 1.35f, 0.72f);
-                glUniform1f(particlePuffinessLocation, 0.9f);
-                glUniform1f(particleShearLocation, 0.0f);
-                ambientCloudEmitter->renderParticles();
-            }
-            if (ashEmitter) {
-                float ashAge = sceneDirector &&
-                               sceneDirector->getStage() == SimulationStage::SmokeAndAsh
-                    ? sceneDirector->getStageElapsedSeconds()
-                    : CLOUD_FORM_DELAY;
-                float ashFormation = glm::smoothstep(0.0f, 1.4f, ashAge);
-                float ashCooling = glm::smoothstep(0.0f, LAVA_COOL_DURATION, ashAge);
-                float ashFade = cloudEmitter
-                    ? 1.0f - glm::smoothstep(0.0f, 6.0f,
-                                             lavaTime - (lavaCoolStartTime + CLOUD_FORM_DELAY))
-                    : 1.0f;
-                glm::vec3 warmAsh(0.22f, 0.185f, 0.17f);
-                glm::vec3 coolAsh(0.145f, 0.15f, 0.17f);
-                glm::vec3 ashTint = glm::mix(warmAsh, coolAsh, ashCooling);
-                glUniform3f(particleTintLocation, ashTint.r, ashTint.g, ashTint.b);
-                glUniform1f(particleAlphaLocation, 0.24f * ashFormation * ashFade);
-                glUniform2f(particleShapeScaleLocation, 0.78f, 1.08f);
-                glUniform1f(particlePuffinessLocation, 0.92f);
-                glUniform1f(particleShearLocation, 0.0f);
-                ashEmitter->renderParticles();
-            }
-            if (cloudEmitter) {
-                glUniform3f(particleTintLocation, 0.37f, 0.39f, 0.47f);
-                glUniform1f(particleAlphaLocation,
-                            0.42f * (1.0f - calmProgress));
-                glUniform2f(particleShapeScaleLocation, 1.28f, 0.68f);
-                glUniform1f(particlePuffinessLocation, 0.95f);
-                glUniform1f(particleShearLocation, 0.0f);
-                cloudEmitter->renderParticles();
-            }
-            if (rainEmitter) {
-                float rainFade = floraSpawned
-                    ? 1.0f - glm::smoothstep(0.0f, 5.0f, lavaTime - floraGrowthStartTime)
-                    : 1.0f;
-                float rainAge = glm::max(0.0f, lavaTime - rainStartTime);
-                float rainBuild = glm::smoothstep(0.0f, 1.6f, rainAge);
-                glUniform3f(particleTintLocation, 0.58f, 0.72f, 0.90f);
-                glUniform1f(particleAlphaLocation, 0.82f * rainBuild * rainFade);
-                glUniform2f(particleShapeScaleLocation, 0.17f, 6.2f);
-                glUniform1f(particlePuffinessLocation, 0.0f);
-                glUniform1f(particleShearLocation, 0.16f);
-                rainEmitter->renderParticles();
-            }
-            // Restore defaults for any later particle draws.
-            glUniform3f(particleTintLocation, 1.0f, 1.0f, 1.0f);
-            glUniform1f(particleAlphaLocation, 1.0f);
-            glUniform2f(particleShapeScaleLocation, 1.0f, 1.0f);
-            glUniform1f(particlePuffinessLocation, 0.0f);
-            glUniform1f(particleShearLocation, 0.0f);
-
-            glBindTexture(GL_TEXTURE_2D, 0);
-            glDepthMask(GL_TRUE);
-        }
-
-        if (lightningSystem) {
-            glDepthMask(GL_FALSE);
-            lightningSystem->draw(viewMatrix, projectionMatrix);
-            glDepthMask(GL_TRUE);
-        }
-
-        #if defined(ELEMENTAL_ENABLE_IMGUI)
-        if (gShowHud) {
-            ImGui::SetNextWindowBgAlpha(0.72f);
-            ImGui::SetNextWindowPos(ImVec2(18.0f, 18.0f), ImGuiCond_FirstUseEver);
-            ImGui::SetNextWindowSize(ImVec2(340.0f, 0.0f), ImGuiCond_FirstUseEver);
-            ImGui::Begin("Elemental controls", nullptr,
-                         ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize);
-            if (sceneDirector) {
-                ImGui::Text("Stage: %s", sceneDirector->getStageName());
-                ImGui::SameLine();
-                ImGui::TextDisabled("  %.1fs", sceneDirector->getSimSeconds());
-
-                float selectedScale = sceneDirector->getTimeScale();
-                if (ImGui::SliderFloat("Simulation speed", &selectedScale, 0.0f, 8.0f, "%.2fx")) {
-                    sceneDirector->setTimeScale(selectedScale);
-                }
-                if (ImGui::Button(sceneDirector->isPaused() ? "Resume" : "Pause")) {
-                    sceneDirector->setPaused(!sceneDirector->isPaused());
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Normal speed")) sceneDirector->setTimeScale(1.0f);
-                ImGui::SameLine();
-                if (ImGui::Button("Restart")) resetSimulation(currentTime);
-
-                if (ImGui::Button("Lightning")) manualLightningRequested = true;
-                ImGui::SameLine();
-                if (ImGui::Button("Reset camera")) camera->resetToEstablishingShot();
-
-                ImGui::Checkbox("Classic Phong (Lab 5)", &gUseClassicPhong);
-                ImGui::SliderFloat("Lava texture (Lab 3)",
-                                   &gLavaTextureBlend, 0.0f, 0.40f, "%.2f");
-                ImGui::SliderFloat("Water normals (Lab 3)",
-                                   &gWaterNormalStrength, 0.0f, 1.0f, "%.2f");
-
-                ImGui::ProgressBar(waterFill, ImVec2(-1.0f, 0.0f), "River water");
-                ImGui::Separator();
-                ImGui::TextDisabled("F1 close  |  C camera  |  P pause  |  [ ] speed  |  R restart");
-            }
-            ImGui::End();
-        }
-
-            ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-        #endif
+        renderControls(currentTime, waterFill);
 
         glDepthMask(GL_TRUE);
 
@@ -1677,35 +1756,8 @@ void mainLoop()
     } while (glfwGetKey(window, GLFW_KEY_ESCAPE) != GLFW_PRESS &&
              glfwWindowShouldClose(window) == 0);
 
-    if (gReportPerformance) {
-        const double measuredSeconds = glfwGetTime() - performanceStartTime;
-        const double averageFps = measuredSeconds > 0.0
-            ? static_cast<double>(renderedFrameCount) / measuredSeconds
-            : 0.0;
-        std::cout << std::fixed << std::setprecision(1)
-                  << "Performance: " << renderedFrameCount << " frames in "
-                  << measuredSeconds << " s (" << averageFps
-                  << " average FPS)" << std::endl;
-        if (!frameTimesMs.empty()) {
-            std::sort(frameTimesMs.begin(), frameTimesMs.end());
-            const auto percentile = [&](float fraction) {
-                const std::size_t index = static_cast<std::size_t>(
-                    fraction * static_cast<float>(frameTimesMs.size() - 1));
-                return frameTimesMs[index];
-            };
-            const std::size_t framesOver16Ms = static_cast<std::size_t>(std::count_if(
-                frameTimesMs.begin(), frameTimesMs.end(),
-                [](float milliseconds) { return milliseconds > 16.67f; }));
-            const std::size_t framesOver33Ms = static_cast<std::size_t>(std::count_if(
-                frameTimesMs.begin(), frameTimesMs.end(),
-                [](float milliseconds) { return milliseconds > 33.33f; }));
-            std::cout << "Frame time: p95 " << percentile(0.95f)
-                      << " ms, p99 " << percentile(0.99f)
-                      << " ms, max " << frameTimesMs.back() << " ms; "
-                      << framesOver16Ms << " frames >16.7 ms, "
-                      << framesOver33Ms << " frames >33.3 ms" << std::endl;
-        }
-    }
+    reportPerformance(performanceStartTime, renderedFrameCount, frameTimesMs);
+
 }
 
 void initialize()
@@ -1755,12 +1807,8 @@ void initialize()
     // Ensure we can capture the escape key being pressed below
     glfwSetInputMode(window, GLFW_STICKY_KEYS, GL_TRUE);
 
-    // Hide the mouse and enable unlimited movement
-    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-
-    // Set the mouse at the center of the screen
-    glfwPollEvents();
-    glfwSetCursorPos(window, W_WIDTH / 2, W_HEIGHT / 2);
+    // Show the pointer only while a control is visible.
+    glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_HIDDEN);
 
     // Gray background color
     glClearColor(0.5f, 0.5f, 0.5f, 0.0f);
@@ -1778,11 +1826,11 @@ void initialize()
 
     // Create camera
     camera = new Camera(window);
-    if (!gScreenshotPath.empty()) {
-        // Automated captures run without window focus, so do not interpret the
-        // desktop pointer position as an intentional camera movement.
-        camera->setMouseLookEnabled(false);
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+    if (gShowHud || gShowSettings) {
+        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
     }
+#endif
 
     moonlight = new Light(window,
         vec4{0.040, 0.040, 0.200, 1.0},
@@ -1823,10 +1871,10 @@ int main(int argc, char** argv)
             gAutoExitOnComplete = true;
         } else if (argument == "--report-performance") {
             gReportPerformance = true;
-        } else if (argument == "--classic-phong") {
-            gUseClassicPhong = true;
-        } else if (argument == "--blinn-phong") {
-            gUseClassicPhong = false;
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+        } else if (argument == "--show-controls") {
+            gShowHud = true;
+#endif
         } else if (argument == "--lava-texture-blend" && i + 1 < argc) {
             gLavaTextureBlend = glm::clamp(
                 static_cast<float>(std::atof(argv[++i])), 0.0f, 0.40f);

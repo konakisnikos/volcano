@@ -158,6 +158,10 @@ target_compile_definitions(elemental PRIVATE
 target_link_libraries(elemental PRIVATE ${ALL_LIBS})
 
 if (ELEMENTAL_ENABLE_IMGUI)
+  target_sources(elemental PRIVATE
+    elemental/StopwatchWidget.cpp
+    elemental/StopwatchWidget.h
+  )
   target_link_libraries(elemental PRIVATE imgui_lib)
   target_compile_definitions(elemental PRIVATE ELEMENTAL_ENABLE_IMGUI=1)
 endif()

@@ -21,9 +21,7 @@ small Dear ImGui time controller.
   and electrified-water effect. Alpha blending is used for smoke, clouds and
   rain.
 - **Lab 5 — lighting:** terrain, water and vegetation use ambient, diffuse and
-  specular terms. Classic Phong (`reflect(-L, N)` followed by `R · V`) is the
-  default. The previous Blinn–Phong halfway-vector variant remains available
-  for a direct comparison.
+  specular terms. Classic Phong uses `reflect(-L, N)` followed by `R · V`.
 - **Lab 6 — shadows:** moonlight is a directional light in both the terrain
   shader and the orthographic depth pass. The 2048×2048 depth texture is sampled
   with slope-dependent bias and 3×3 PCF.
@@ -65,11 +63,8 @@ the first configure. It can be disabled with
 
 | Control | Action |
 | --- | --- |
-| Mouse | Look around |
-| `W`, `A`, `S`, `D` | Move camera |
-| Up / Down | Change field of view |
-| `C` | Restore the establishing shot |
-| `F1` | Show or hide the time-control panel |
+| `F1` | Show or hide the stopwatch |
+| `F2` | Show or hide the other controls |
 | `P` | Pause or resume simulation time |
 | `[` / `]` | Halve or double simulation speed |
 | `0` | Restore 1× simulation speed |
@@ -77,8 +72,14 @@ the first configure. It can be disabled with
 | `B` | Trigger a demonstration lightning strike |
 | `Esc` | Exit |
 
-The HUD is hidden by default. While it is open, mouse look is disabled so the
-panel can be operated normally.
+The stopwatch is hidden by default. Its left, middle and right buttons halve
+simulation speed, pause/resume, and double simulation speed. The second hand
+completes a 30-second simulation-time dial and leaves faint orange afterimages
+at 2× speed and above. It pauses and accelerates with the scene. The dial
+shows the speed; there is no digital time readout. Other controls, including
+the lava and water sliders, are available separately with F2. The camera uses
+a fixed view of the volcano and river throughout the sequence, apart from the
+brief scripted shake before the eruption.
 
 ## Automated visual checks
 
@@ -97,13 +98,11 @@ Add `--report-performance` to print the uncapped average frame rate together
 with p95, p99 and maximum frame times. On macOS, use fullscreen for the final
 presentation: the deprecated windowed OpenGL path can have uneven compositor
 frame pacing even when the renderer has ample performance headroom.
+Add `--show-controls` to display the stopwatch in an automated screenshot.
 
-Lighting and lava comparisons can also be selected from the command line:
+Lava and water texture strengths can also be selected from the command line:
 
 ```sh
-# Classic Phong is the default; this selects the comparison implementation.
-./build/elemental --blinn-phong
-
 # Range 0.00–0.40. Zero shows the original procedural-only lava.
 ./build/elemental --lava-texture-blend 0.20
 
@@ -111,8 +110,7 @@ Lighting and lava comparisons can also be selected from the command line:
 ./build/elemental --water-normal-strength 0.65
 ```
 
-The Phong toggle and both texture strengths are also available in the `F1`
-panel during a run.
+Both texture strengths are also available in the `F2` panel during a run.
 
 ## Code map
 

@@ -3,8 +3,7 @@
 class Drawable;
 class Volcano;
 
-// Small procedural meshes keep the assignment portable and avoid requiring
-// external model files for simple stylized props.
+// Procedural meshes for flowers and grass.
 Drawable* createUnitSphereDrawable(int stacks = 12, int slices = 18);
 Drawable* createUnitCylinderDrawable(int sides = 14);
 

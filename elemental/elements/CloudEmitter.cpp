@@ -46,9 +46,7 @@ void CloudEmitter::createNewParticle(int index) {
         (RAND - 0.5f) * driftSpeed * 0.25f
     );
 
-    // Clouds drift at constant velocity, so their physical acceleration remains
-    // zero. Formation values are visual properties rather than disguised vector
-    // components; this keeps the Lab 7 motion state semantically correct.
+    // Formation changes scale and opacity while drift keeps constant velocity.
     particle.accel = glm::vec3(0.0f);
     particle.targetScale = minPuffSize + RAND * (maxPuffSize - minPuffSize);
     particle.opacityLimit = 0.52f + RAND * 0.30f;

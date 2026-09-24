@@ -104,8 +104,7 @@ void SceneDirector::update(double timeSeconds, float deltaSeconds) {
         reset(timeSeconds);
     }
 
-    // The camera can still look/move freely while the simulation is paused;
-    // only the domino-chain clock below is frozen.
+    // Remove the previous frame's scripted shake before rebuilding the fixed view.
     if (m_camera && m_hasShakeOffset) {
         m_camera->position -= m_lastShakeOffset;
         m_lastShakeOffset = glm::vec3(0.0f);
