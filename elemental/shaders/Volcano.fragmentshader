@@ -62,7 +62,6 @@ uniform int  uCrackCount;
 uniform vec2 uCrackPosXZ[MAX_CRACKS];
 uniform float uCrackStartTime[MAX_CRACKS];
 uniform float uCrackWidth[MAX_CRACKS];
-uniform float uCrackRadius[MAX_CRACKS];   // how far the effect extends
 
 // NEW: line crack controls
 uniform vec2 uCrackDirXZ[MAX_CRACKS];     // normalized direction in XZ
@@ -126,7 +125,8 @@ float lavaFbm(vec2 p) {
 }
 
 float crackMaskAt(vec2 xz, int i, float tNow) {
-    float t = clamp((tNow - uCrackStartTime[i]) / 1.2, 0.0, 1.0); // 1.2s "break open"
+    float openProgress = clamp((tNow - uCrackStartTime[i]) / 1.2, 0.0, 1.0);
+    if (openProgress <= 0.0) return 0.0;
 
     vec2 dir = normalize(uCrackDirXZ[i]);
     vec2 nrm = vec2(-dir.y, dir.x); // perpendicular
@@ -161,13 +161,14 @@ float crackMaskAt(vec2 xz, int i, float tNow) {
     // Distance to fissure line segment with warped point
     float dLine = sdSegment(xzWarped, a, b);
 
-    // Gate by overall influence radius around the crack center (unwarped)
-    float dCenter = length(xz - uCrackPosXZ[i]);
-
     float line = 1.0 - smoothstep(uCrackWidth[i], uCrackWidth[i] * 2.5, dLine);
-    float gate = 1.0 - smoothstep(uCrackRadius[i], uCrackRadius[i] * 1.1, dCenter);
 
-    return line * gate * t;
+    // The tip travels from the crater-facing endpoint toward the outer endpoint.
+    float along = (s + uCrackHalfLen[i]) / (2.0 * uCrackHalfLen[i]);
+    float reveal = smoothstep(along - 0.04, along, openProgress)
+                 * smoothstep(0.0, 0.04, openProgress);
+
+    return line * reveal;
 }
 
 float scorchMaskAt(vec2 xz) {

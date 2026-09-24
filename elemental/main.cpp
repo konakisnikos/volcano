@@ -1002,9 +1002,7 @@ void mainLoop()
         // Send time uniform
         glUniform1f(volcanoUniforms.lavaTime, lavaTime);
 
-        // Create cracks once shortly before lava starts flowing.
-        // (SceneDirector starts lava at 7 seconds, so lavaTime becomes >= 0 then.
-        // We create cracks when lavaTime becomes close to 0.)
+        // Seed the cracks before eruption; each starts on the lava-time clock.
         if (!gCracksCreated && lavaTime > -1.0f) {
             stats = volcano->getStats();
 
@@ -1021,23 +1019,23 @@ void mainLoop()
             gCrackSystem.reset();
             {
                 glm::vec2 p(-180.0f, 80.0f);
-                gCrackSystem.addCrack(p, lavaTime + 0.30f, 1.4f, 80.0f, radialDir(p), 130.0f);
+                gCrackSystem.addCrack(p, 0.30f, 1.4f, radialDir(p), 130.0f);
             }
             {
                 glm::vec2 p(320.0f, -240.0f);
-                gCrackSystem.addCrack(p, lavaTime + 0.00f, 1.9f, 95.0f, radialDir(p), 160.0f);
+                gCrackSystem.addCrack(p, 0.00f, 1.9f, radialDir(p), 160.0f);
             }
             {
                 glm::vec2 p(-200.0f, -340.0f);
-                gCrackSystem.addCrack(p, lavaTime + 0.15f, 1.6f, 85.0f, radialDir(p), 140.0f);
+                gCrackSystem.addCrack(p, 0.15f, 1.6f, radialDir(p), 140.0f);
             }
             {
                 glm::vec2 p(-170.0f, -180.0f);
-                gCrackSystem.addCrack(p, lavaTime + 0.45f, 1.7f, 90.0f, radialDir(p), 150.0f);
+                gCrackSystem.addCrack(p, 0.45f, 1.7f, radialDir(p), 150.0f);
             }
             {
                 glm::vec2 p(180.0f, -60.0f);
-                gCrackSystem.addCrack(p, lavaTime + 0.60f, 1.1f, 75.0f, radialDir(p), 120.0f);
+                gCrackSystem.addCrack(p, 0.60f, 1.1f, radialDir(p), 120.0f);
             }
 
             gCracksCreated = true;

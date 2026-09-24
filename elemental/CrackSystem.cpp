@@ -15,7 +15,6 @@ void CrackSystem::reset() {
 void CrackSystem::addCrack(const glm::vec2& posXZ,
                            float startTime,
                            float width,
-                           float radius,
                            const glm::vec2& dirXZ,
                            float halfLen) {
     if (static_cast<int>(m_cracks.size()) >= MAX_CRACKS) return;
@@ -24,7 +23,6 @@ void CrackSystem::addCrack(const glm::vec2& posXZ,
     e.posXZ = posXZ;
     e.startTime = startTime;
     e.width = width;
-    e.radius = radius;
     e.dirXZ = dirXZ;
     e.halfLen = halfLen;
     m_cracks.push_back(e);
@@ -39,7 +37,6 @@ void CrackSystem::cacheUniformLocations(GLuint program) {
     m_positionLocation = glGetUniformLocation(program, "uCrackPosXZ[0]");
     m_startTimeLocation = glGetUniformLocation(program, "uCrackStartTime[0]");
     m_widthLocation = glGetUniformLocation(program, "uCrackWidth[0]");
-    m_radiusLocation = glGetUniformLocation(program, "uCrackRadius[0]");
     m_directionLocation = glGetUniformLocation(program, "uCrackDirXZ[0]");
     m_halfLengthLocation = glGetUniformLocation(program, "uCrackHalfLen[0]");
 }
@@ -61,19 +58,16 @@ void CrackSystem::uploadToVolcanoShader(GLuint program) {
     std::vector<glm::vec2> pos(count);
     std::vector<float> startT(count);
     std::vector<float> width(count);
-    std::vector<float> radius(count);
 
     for (int i = 0; i < count; ++i) {
         pos[i] = m_cracks[i].posXZ;
         startT[i] = m_cracks[i].startTime;
         width[i] = m_cracks[i].width;
-        radius[i] = m_cracks[i].radius;
     }
 
     if (m_positionLocation != -1) glUniform2fv(m_positionLocation, count, &pos[0].x);
     if (m_startTimeLocation != -1) glUniform1fv(m_startTimeLocation, count, startT.data());
     if (m_widthLocation != -1) glUniform1fv(m_widthLocation, count, width.data());
-    if (m_radiusLocation != -1) glUniform1fv(m_radiusLocation, count, radius.data());
 
     // Upload the oriented-line parameters used by the fissure distance field.
     std::vector<glm::vec2> dir(count);

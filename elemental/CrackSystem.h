@@ -15,7 +15,6 @@ public:
     void addCrack(const glm::vec2& posXZ,
                   float startTime,
                   float width,
-                  float radius,
                   const glm::vec2& dirXZ,
                   float halfLen);
 
@@ -27,7 +26,6 @@ private:
         glm::vec2 posXZ{0.0f};
         float startTime = 0.0f;
         float width = 6.0f;
-        float radius = 80.0f;
         glm::vec2 dirXZ{1.0f, 0.0f};
         float halfLen = 80.0f;
     };
@@ -39,7 +37,6 @@ private:
     GLint m_positionLocation = -1;
     GLint m_startTimeLocation = -1;
     GLint m_widthLocation = -1;
-    GLint m_radiusLocation = -1;
     GLint m_directionLocation = -1;
     GLint m_halfLengthLocation = -1;
 
