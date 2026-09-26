@@ -66,7 +66,7 @@ void CloudEmitter::createNewParticle(int index) {
     particle.rot_angle = RAND * 360.0f;
 
     // Start near the smoke column and let the wider cloud appear afterward.
-    const float outwardDelay = 0.65f * std::min(1.0f, std::abs(x) / radius);
+    const float outwardDelay = 2.2f * std::pow(std::min(1.0f, std::abs(x) / radius), 1.1f);
     const float delaySeconds = 0.15f + outwardDelay + 0.45f * RAND;
     particle.life = -delaySeconds / formDuration;
 
@@ -84,7 +84,7 @@ void CloudEmitter::updateParticles(float time, float dt, glm::vec3 camera_pos) {
 
         particle.position += particle.velocity * dt;
         particle.position.y += std::sin(time * 0.16f + particle.animationPhase) * dt * 0.18f;
-        particle.mass = particle.targetScale * growth;
+        particle.mass = particle.targetScale * std::sqrt(growth);
 
         particle.dist_from_camera = length(particle.position - camera_pos);
 

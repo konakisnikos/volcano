@@ -153,14 +153,14 @@ SmokeEmitter* ashEmitter = nullptr;
 float lavaCoolStartTime = -1.0f; // lavaTime at which cooling began, or -1 if not yet
 
 // The storm cloud starts while the last part of the lava is still cooling.
-const float CLOUD_FORM_DELAY = 5.5f;
-const float CLOUD_FORM_DURATION = 5.5f;
+const float CLOUD_FORM_DELAY = 4.3f;
+const float CLOUD_FORM_DURATION = 7.0f;
 const float CLOUD_HEIGHT_ABOVE_CRATER = 185.0f;
-const float CLOUD_VERTICAL_SPREAD = 160.0f;
+const float CLOUD_VERTICAL_SPREAD = 148.0f;
 CloudEmitter* cloudEmitter = nullptr;
 
 // Delay between cloud formation and rainfall.
-const float RAIN_START_DELAY = 6.0f; // let the cloud finish forming before rain begins
+const float RAIN_START_DELAY = 7.2f; // let the cloud finish forming before rain begins
 RainEmitter* rainEmitter = nullptr;
 float rainStartTime = -1.0f; // lavaTime at which rain began, or -1 if not yet
 const float WATER_FILL_DURATION = 22.0f; // slower rainfall/runoff accumulation
@@ -173,7 +173,7 @@ LightningSystem* lightningSystem = nullptr;
 std::vector<glm::vec2> scorchPositions;
 std::vector<float> scorchRadii;
 std::vector<float> scorchStrengths;
-const float LIGHTNING_START_DELAY = 5.15f;
+const float LIGHTNING_START_DELAY = 6.35f;
 float nextLightningTime = -1.0f;
 bool manualLightningRequested = false;
 int earlyGroundStrikeCount = 0;
@@ -1070,7 +1070,7 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             float ashFormation = glm::smoothstep(0.0f, 1.4f, ashAge);
             float ashCooling = glm::smoothstep(0.0f, LAVA_COOL_DURATION, ashAge);
             float ashFade = cloudEmitter
-                ? 1.0f - glm::smoothstep(2.0f, 7.0f,
+                ? 1.0f - glm::smoothstep(3.2f, 8.2f,
                                          lavaTime - (lavaCoolStartTime + CLOUD_FORM_DELAY))
                 : 1.0f;
             glm::vec3 warmAsh(0.285f, 0.265f, 0.25f);
@@ -1097,9 +1097,9 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             const float cloudBuild = glm::smoothstep(0.0f, CLOUD_FORM_DURATION,
                                                      cloudAge);
             glUniform3f(particleTintLocation, 0.18f, 0.20f, 0.26f);
-            // Dense overlapping puffs need a slower opacity ramp than their scale growth.
+            // Fade in over the whole formation; each puff also grows from the center outward.
             glUniform1f(particleAlphaLocation,
-                        0.55f * cloudBuild * cloudBuild * (1.0f - calmProgress));
+                        0.53f * cloudBuild * (1.0f - calmProgress));
             glUniform2f(particleShapeScaleLocation, 1.07f, 1.02f);
             glUniform1f(particlePuffinessLocation, 0.95f);
             glUniform1f(particleShearLocation, 0.0f);
@@ -1258,8 +1258,8 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
             stats.craterTop + CLOUD_HEIGHT_ABOVE_CRATER,
             glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
         cloudEmitter = new CloudEmitter(
-            particleQuad, 2400, cloudPos,
-            270.0f, CLOUD_VERTICAL_SPREAD, 20.0f, 40.0f, 0.28f, 5.0f);
+            particleQuad, 2200, cloudPos,
+            270.0f, CLOUD_VERTICAL_SPREAD, 20.0f, 40.0f, 0.28f, 6.3f);
         sceneDirector->transitionTo(SimulationStage::CloudFormation);
         nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
     }
