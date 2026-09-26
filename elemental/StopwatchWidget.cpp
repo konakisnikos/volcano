@@ -220,7 +220,8 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
     const ImGuiIO& io = ImGui::GetIO();
     const float scale = std::max(0.58f, std::min(0.75f, io.DisplaySize.y / 768.0f));
     const ImVec2 size(426.0f * scale, 500.0f * scale);
-    const ImVec2 position(4.0f * scale,
+    const ImVec2 position(std::max(0.0f,
+                                   io.DisplaySize.x - size.x + 42.0f * scale),
                           std::max(0.0f, io.DisplaySize.y - size.y));
     ImGui::SetNextWindowPos(position, ImGuiCond_Always);
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
