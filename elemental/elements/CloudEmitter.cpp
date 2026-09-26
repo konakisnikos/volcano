@@ -32,7 +32,8 @@ void CloudEmitter::createNewParticle(int index) {
     // A radial ellipse avoids the old rectangular cloud footprint. Small vertical
     // strata make overlapping puffs read as one layered cloud bank.
     const float angle = RAND * 6.2831853f;
-    const float radial = std::sqrt(RAND);
+    // Keep the storm core denser while leaving a broken, lighter outer edge.
+    const float radial = std::pow(RAND, 0.62f);
     float x = std::cos(angle) * radius * radial;
     float z = std::sin(angle) * radius * 0.55f * radial;
     float y = (RAND - 0.5f) * verticalSpread

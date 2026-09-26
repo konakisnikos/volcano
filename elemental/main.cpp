@@ -1219,8 +1219,8 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
             stats.craterTop + 230.0f,
             glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
         cloudEmitter = new CloudEmitter(
-            particleQuad, 110, cloudPos,
-            285.0f, 72.0f, 22.0f, 50.0f, 1.15f, 5.0f);
+            particleQuad, 130, cloudPos,
+            310.0f, 72.0f, 22.0f, 50.0f, 1.15f, 5.0f);
         sceneDirector->transitionTo(SimulationStage::CloudFormation);
         nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
     }
