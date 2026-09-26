@@ -1051,10 +1051,10 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
                                          const glm::mat4& viewMatrix,
                                          const glm::mat4& projectionMatrix)
 {
-    // Draw smoke/ash/cloud last (transparent)
     bool drawSmoke = smokeEmitter && sceneDirector && lavaTimeForSmoke >= 0.0f;
-    if (drawSmoke || calmSmokeEmitter || ashEmitter ||
-        cloudEmitter || rainEmitter) {
+    const bool hasWeather = drawSmoke || calmSmokeEmitter || ashEmitter ||
+                            cloudEmitter || rainEmitter;
+    if (hasWeather) {
         glDepthMask(GL_FALSE);
 
         glUseProgram(particleShaderProgram);
@@ -1115,6 +1115,11 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             ashEmitter->renderParticles();
             glUniform2f(particleTopFadeRange, 1000000.0f, 1000001.0f);
         }
+        // Keep the cloud in front of the bolt, but leave the rising smoke behind it.
+        if (lightningSystem && lightningSystem->isActive()) {
+            lightningSystem->draw(viewMatrix, projectionMatrix);
+            glUseProgram(particleShaderProgram);
+        }
         if (cloudEmitter) {
             const float cloudAge = sceneDirector &&
                                    sceneDirector->getStage() == SimulationStage::CloudFormation
@@ -1164,8 +1169,7 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
         glBindTexture(GL_TEXTURE_2D, 0);
         glDepthMask(GL_TRUE);
     }
-
-    if (lightningSystem) {
+    if (!hasWeather && lightningSystem && lightningSystem->isActive()) {
         glDepthMask(GL_FALSE);
         lightningSystem->draw(viewMatrix, projectionMatrix);
         glDepthMask(GL_TRUE);
