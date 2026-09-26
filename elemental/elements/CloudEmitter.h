@@ -19,6 +19,10 @@ class CloudEmitter : public IntParticleEmitter {
                       float maxPuffSize = 40.0f,
                       float driftSpeed = 3.0f,
                       float formationSeconds = 6.0f);
+        ~CloudEmitter() override;
+
+        GLuint guideTexture() const { return m_guideTexture; }
+        glm::vec2 guideSize() const { return glm::vec2(radius * 2.0f, verticalSpread); }
 
         float radius = 150.0f;
         float verticalSpread = 40.0f;
@@ -32,6 +36,12 @@ class CloudEmitter : public IntParticleEmitter {
         int active_particles = 0;
         void createNewParticle(int index) override;
         void updateParticles(float time, float dt, glm::vec3 camera_pos = glm::vec3(0, 0, 0)) override;
+
+    private:
+        std::vector<unsigned char> m_guidePixels;
+        int m_guideWidth = 0;
+        int m_guideHeight = 0;
+        GLuint m_guideTexture = 0;
 };
 
 #endif // CLOUDEMITTER_H

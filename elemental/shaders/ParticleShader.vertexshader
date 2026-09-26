@@ -12,6 +12,7 @@ layout (location = 12) in float life;
 
 out vec2 UV;
 out float vs_life;
+out vec3 vs_worldPosition;
 flat out float vs_seed;
 flat out float vs_cloudFlashWeight;
 //out vec3 normal;
@@ -42,6 +43,8 @@ void main() {
     vec3 shapedPosition = vertexPosition_modelspace;
     shapedPosition.xy *= uShapeScale;
     shapedPosition.x += shapedPosition.y * uShear;
-    gl_Position = PV * aInstanceMatrix * rotationMatrix * vec4(shapedPosition * scale, 1);
+    vec4 worldPosition = aInstanceMatrix * rotationMatrix * vec4(shapedPosition * scale, 1);
+    vs_worldPosition = worldPosition.xyz;
+    gl_Position = PV * worldPosition;
 
 }

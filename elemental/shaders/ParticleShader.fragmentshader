@@ -4,10 +4,15 @@ out vec4 fragmentColor;
 
 in vec2 UV;
 in float vs_life;
+in vec3 vs_worldPosition;
 flat in float vs_seed;
 flat in float vs_cloudFlashWeight;
 
 uniform sampler2D texture0; // kept for compatibility; not sampled (see below)
+uniform sampler2D uCloudGuide;
+uniform bool uUseCloudGuide = false;
+uniform vec3 uCloudGuideCenter;
+uniform vec2 uCloudGuideSize;
 
 // Each emitter supplies its own color + opacity. The soft round shape is generated
 // procedurally from the quad's UVs rather than from the (near-black) smoke texture,
@@ -58,9 +63,21 @@ void main() {
                      clamp(uPuffiness, 0.0, 1.0));
 
     float alpha = soft * vs_life * uAlphaScale;
+    vec3 baseTint = uTint;
+    if (uUseCloudGuide) {
+        vec2 guideUv = vec2((vs_worldPosition.x - uCloudGuideCenter.x)
+                             / uCloudGuideSize.x + 0.5,
+                            0.5 - (vs_worldPosition.y - uCloudGuideCenter.y)
+                             / uCloudGuideSize.y);
+        if (any(lessThan(guideUv, vec2(0.0))) ||
+            any(greaterThan(guideUv, vec2(1.0)))) discard;
+        vec4 guide = texture(uCloudGuide, guideUv);
+        alpha *= smoothstep(0.03, 0.42, guide.a);
+        baseTint = guide.rgb * vec3(0.66, 0.69, 0.75);
+    }
     if (alpha < 0.01) discard;
     // The storm cloud briefly lights from within when a bolt starts below it.
     float cloudLight = clamp(uCloudFlash * vs_cloudFlashWeight, 0.0, 1.0);
-    vec3 litTint = mix(uTint, vec3(0.62, 0.68, 0.78), cloudLight * 0.70);
+    vec3 litTint = mix(baseTint, vec3(0.62, 0.68, 0.78), cloudLight * 0.70);
     fragmentColor = vec4(litTint, alpha);
 }

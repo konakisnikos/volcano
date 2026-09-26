@@ -130,6 +130,10 @@ GLuint particlePuffinessLocation;
 GLuint particleShearLocation;
 GLint particleCloudFlashLocation;
 GLint particleCloudFlashCenterLocation;
+GLint particleCloudGuideSampler;
+GLint particleCloudGuideEnabled;
+GLint particleCloudGuideCenter;
+GLint particleCloudGuideSize;
 GLuint smokeTexture;
 GLuint treeTexture;
 GLuint almondTreeTexture;
@@ -493,6 +497,10 @@ void createContext()
     particleShearLocation = glGetUniformLocation(particleShaderProgram, "uShear");
     particleCloudFlashLocation = glGetUniformLocation(particleShaderProgram, "uCloudFlash");
     particleCloudFlashCenterLocation = glGetUniformLocation(particleShaderProgram, "uCloudFlashCenterXZ");
+    particleCloudGuideSampler = glGetUniformLocation(particleShaderProgram, "uCloudGuide");
+    particleCloudGuideEnabled = glGetUniformLocation(particleShaderProgram, "uUseCloudGuide");
+    particleCloudGuideCenter = glGetUniformLocation(particleShaderProgram, "uCloudGuideCenter");
+    particleCloudGuideSize = glGetUniformLocation(particleShaderProgram, "uCloudGuideSize");
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -1075,16 +1083,26 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
         if (cloudEmitter) {
             glUniform3f(particleTintLocation, 0.18f, 0.20f, 0.26f);
             glUniform1f(particleAlphaLocation,
-                        0.50f * (1.0f - calmProgress));
-            glUniform2f(particleShapeScaleLocation, 1.28f, 0.68f);
+                        0.55f * (1.0f - calmProgress));
+            glUniform2f(particleShapeScaleLocation, 1.05f, 0.94f);
             glUniform1f(particlePuffinessLocation, 0.95f);
             glUniform1f(particleShearLocation, 0.0f);
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, cloudEmitter->guideTexture());
+            glUniform1i(particleCloudGuideSampler, 1);
+            glUniform1i(particleCloudGuideEnabled, cloudEmitter->guideTexture() != 0);
+            glUniform3fv(particleCloudGuideCenter, 1, &cloudEmitter->emitter_pos[0]);
+            glm::vec2 cloudSize = cloudEmitter->guideSize();
+            glUniform2fv(particleCloudGuideSize, 1, &cloudSize[0]);
             glUniform2f(particleCloudFlashCenterLocation,
                         cloudEmitter->emitter_pos.x, cloudEmitter->emitter_pos.z);
             glUniform1f(particleCloudFlashLocation,
                         lightningSystem ? lightningSystem->flashStrength() : 0.0f);
             cloudEmitter->renderParticles();
             glUniform1f(particleCloudFlashLocation, 0.0f);
+            glUniform1i(particleCloudGuideEnabled, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glActiveTexture(GL_TEXTURE0);
         }
         if (rainEmitter) {
             float rainFade = floraSpawned
@@ -1229,8 +1247,8 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
             stats.craterTop + 230.0f,
             glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
         cloudEmitter = new CloudEmitter(
-            particleQuad, 180, cloudPos,
-            310.0f, 72.0f, 22.0f, 50.0f, 1.15f, 3.0f);
+            particleQuad, 1000, cloudPos,
+            310.0f, 232.0f, 22.0f, 39.0f, 0.28f, 3.0f);
         sceneDirector->transitionTo(SimulationStage::CloudFormation);
         nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
     }
@@ -1553,12 +1571,11 @@ void mainLoop()
         // Draw skybox first
         if (skybox)
         {
-            float stormCloudVisibility = 0.0f;
+            float stormProgress = 0.0f;
             if (cloudEmitter && sceneDirector) {
                 const float cloudAge = sceneDirector->getStage() == SimulationStage::CloudFormation
                     ? sceneDirector->getStageElapsedSeconds() : 3.0f;
-                stormCloudVisibility = glm::smoothstep(0.0f, 3.0f, cloudAge)
-                                     * (1.0f - calmProgress);
+                stormProgress = glm::smoothstep(0.0f, 3.0f, cloudAge);
             }
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             skybox->Draw(viewMatrix, projectionMatrix,
@@ -1567,7 +1584,7 @@ void mainLoop()
                          // Moon disc placement is fixed for the establishing shot.
                          // Terrain lighting and shadows share a separate direction.
                          glm::vec3(-0.35f, 0.15f, -0.925f),
-                         calmProgress, stormCloudVisibility);
+                         calmProgress, stormProgress);
         }
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);

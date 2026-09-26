@@ -57,7 +57,6 @@ Skybox::Skybox(const std::vector<std::string>& faces)
 	: m_drawable(nullptr),
 	  m_cubemapTexture(0),
 	  m_cloudTexture(0),
-	  m_stormCloudTexture(0),
 	  m_shaderProgram(0),
 	  m_viewLocation(-1),
 	  m_projectionLocation(-1),
@@ -65,12 +64,11 @@ Skybox::Skybox(const std::vector<std::string>& faces)
 	  m_timeLocation(-1),
 	  m_moonLocation(-1),
 	  m_calmLocation(-1),
-	  m_stormCloudVisibilityLocation(-1)
+	  m_stormProgressLocation(-1)
 {
 	setupMesh();
 	loadCubemap(faces);
 	m_cloudTexture = loadSOILWithAlpha(ELEMENTAL_ASSET_DIR "/ambient_cloud_bank.png");
-	m_stormCloudTexture = loadSOILWithAlpha(ELEMENTAL_ASSET_DIR "/storm_cloud_mass.png");
 	m_shaderProgram = ::loadShaders(ELEMENTAL_SHADER_DIR "/Skybox.vertexshader",
 	                              ELEMENTAL_SHADER_DIR "/Skybox.fragmentshader");
 	m_viewLocation = glGetUniformLocation(m_shaderProgram, "V");
@@ -79,7 +77,7 @@ Skybox::Skybox(const std::vector<std::string>& faces)
 	m_timeLocation = glGetUniformLocation(m_shaderProgram, "uTime");
 	m_moonLocation = glGetUniformLocation(m_shaderProgram, "uMoonDirection");
 	m_calmLocation = glGetUniformLocation(m_shaderProgram, "uCalmProgress");
-	m_stormCloudVisibilityLocation = glGetUniformLocation(m_shaderProgram, "uStormCloudVisibility");
+	m_stormProgressLocation = glGetUniformLocation(m_shaderProgram, "uStormProgress");
 
 	glUseProgram(m_shaderProgram);
 	GLint samplerLocation = glGetUniformLocation(m_shaderProgram, "skybox");
@@ -91,11 +89,6 @@ Skybox::Skybox(const std::vector<std::string>& faces)
 	if (cloudSamplerLocation >= 0)
 	{
 		glUniform1i(cloudSamplerLocation, 1);
-	}
-	GLint stormSamplerLocation = glGetUniformLocation(m_shaderProgram, "uStormCloud");
-	if (stormSamplerLocation >= 0)
-	{
-		glUniform1i(stormSamplerLocation, 2);
 	}
 	glUseProgram(0);
 }
@@ -118,11 +111,6 @@ Skybox::~Skybox()
 		glDeleteTextures(1, &m_cloudTexture);
 		m_cloudTexture = 0;
 	}
-	if (m_stormCloudTexture != 0)
-	{
-		glDeleteTextures(1, &m_stormCloudTexture);
-		m_stormCloudTexture = 0;
-	}
 
 	if (m_shaderProgram != 0)
 	{
@@ -136,7 +124,7 @@ void Skybox::Draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix
                   float timeSeconds,
                   const glm::vec3& moonDirection,
                   float calmProgress,
-                  float stormCloudVisibility)
+                  float stormProgress)
 {
 	if (!m_drawable || m_cubemapTexture == 0 || m_shaderProgram == 0)
 	{
@@ -174,17 +162,15 @@ void Skybox::Draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix
 	{
 		glUniform1f(m_calmLocation, calmProgress);
 	}
-	if (m_stormCloudVisibilityLocation >= 0)
+	if (m_stormProgressLocation >= 0)
 	{
-		glUniform1f(m_stormCloudVisibilityLocation, stormCloudVisibility);
+		glUniform1f(m_stormProgressLocation, stormProgress);
 	}
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, m_cubemapTexture);
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, m_cloudTexture);
-	glActiveTexture(GL_TEXTURE2);
-	glBindTexture(GL_TEXTURE_2D, m_stormCloudTexture);
 
 	m_drawable->bind();
 	m_drawable->draw();

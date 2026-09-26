@@ -17,13 +17,12 @@ public:
               float timeSeconds = 0.0f,
               const glm::vec3& moonDirection = glm::vec3(-0.4f, 0.65f, -0.65f),
               float calmProgress = 0.0f,
-              float stormCloudVisibility = 0.0f);
+              float stormProgress = 0.0f);
 
 private:
     Drawable *m_drawable;
     GLuint m_cubemapTexture;
     GLuint m_cloudTexture;
-    GLuint m_stormCloudTexture;
     GLuint m_shaderProgram;
     GLint m_viewLocation;
     GLint m_projectionLocation;
@@ -31,7 +30,7 @@ private:
     GLint m_timeLocation;
     GLint m_moonLocation;
     GLint m_calmLocation;
-    GLint m_stormCloudVisibilityLocation;
+    GLint m_stormProgressLocation;
 
     void loadCubemap(const std::vector<std::string>& faces);
     void setupMesh();
