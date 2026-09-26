@@ -6,10 +6,12 @@ out vec4 FragColor;
 
 uniform samplerCube skybox;
 uniform sampler2D uCloudBank;
+uniform sampler2D uStormCloud;
 uniform float uLightningFlash;
 uniform float uTime;
 uniform vec3 uMoonDirection;
 uniform float uCalmProgress;
+uniform float uStormCloudVisibility;
 
 float directionHash(vec3 direction)
 {
@@ -54,6 +56,17 @@ void main()
     float cloudFade = smoothstep(0.0, 2.8, uTime)
                     * mix(1.0, 0.12, uCalmProgress);
     night = mix(night, cloud.rgb, cloud.a * withinImage * cloudFade * 0.62);
+
+    // A dense storm core hides the stars while the particle layer keeps the
+    // cloud edges and lightning response in motion.
+    vec2 stormUv = vec2((sky.x + 0.69) / 1.00 - uTime * 0.00018,
+                        (0.17 - sky.y) / 0.23);
+    vec4 storm = texture(uStormCloud, stormUv);
+    float withinStorm = step(0.0, stormUv.x) * step(stormUv.x, 1.0)
+                      * step(0.0, stormUv.y) * step(stormUv.y, 1.0);
+    float stormAlpha = smoothstep(0.03, 0.36, storm.a);
+    night = mix(night, storm.rgb * vec3(0.58, 0.61, 0.66),
+                stormAlpha * withinStorm * uStormCloudVisibility);
 
     // A restrained horizon lift ties the cubemap to the terrain fog.
     float horizon = 1.0 - smoothstep(-0.08, 0.30, abs(direction.y));

@@ -1073,9 +1073,9 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             ashEmitter->renderParticles();
         }
         if (cloudEmitter) {
-            glUniform3f(particleTintLocation, 0.25f, 0.27f, 0.33f);
+            glUniform3f(particleTintLocation, 0.18f, 0.20f, 0.26f);
             glUniform1f(particleAlphaLocation,
-                        0.46f * (1.0f - calmProgress));
+                        0.50f * (1.0f - calmProgress));
             glUniform2f(particleShapeScaleLocation, 1.28f, 0.68f);
             glUniform1f(particlePuffinessLocation, 0.95f);
             glUniform1f(particleShearLocation, 0.0f);
@@ -1229,8 +1229,8 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
             stats.craterTop + 230.0f,
             glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
         cloudEmitter = new CloudEmitter(
-            particleQuad, 130, cloudPos,
-            310.0f, 72.0f, 22.0f, 50.0f, 1.15f, 5.0f);
+            particleQuad, 180, cloudPos,
+            310.0f, 72.0f, 22.0f, 50.0f, 1.15f, 3.0f);
         sceneDirector->transitionTo(SimulationStage::CloudFormation);
         nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
     }
@@ -1553,6 +1553,13 @@ void mainLoop()
         // Draw skybox first
         if (skybox)
         {
+            float stormCloudVisibility = 0.0f;
+            if (cloudEmitter && sceneDirector) {
+                const float cloudAge = sceneDirector->getStage() == SimulationStage::CloudFormation
+                    ? sceneDirector->getStageElapsedSeconds() : 3.0f;
+                stormCloudVisibility = glm::smoothstep(0.0f, 3.0f, cloudAge)
+                                     * (1.0f - calmProgress);
+            }
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             skybox->Draw(viewMatrix, projectionMatrix,
                          lightningSystem ? lightningSystem->flashStrength() : 0.0f,
@@ -1560,7 +1567,7 @@ void mainLoop()
                          // Moon disc placement is fixed for the establishing shot.
                          // Terrain lighting and shadows share a separate direction.
                          glm::vec3(-0.35f, 0.15f, -0.925f),
-                         calmProgress);
+                         calmProgress, stormCloudVisibility);
         }
 
         glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);

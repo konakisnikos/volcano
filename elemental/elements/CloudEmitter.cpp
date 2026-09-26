@@ -33,7 +33,7 @@ void CloudEmitter::createNewParticle(int index) {
     // strata make overlapping puffs read as one layered cloud bank.
     const float angle = RAND * 6.2831853f;
     // Keep the storm core denser while leaving a broken, lighter outer edge.
-    const float radial = std::pow(RAND, 0.62f);
+    const float radial = std::pow(RAND, 0.70f);
     float x = std::cos(angle) * radius * radial;
     float z = std::sin(angle) * radius * 0.55f * radial;
     float y = (RAND - 0.5f) * verticalSpread
