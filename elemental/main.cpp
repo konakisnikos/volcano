@@ -128,6 +128,8 @@ GLuint particleAlphaLocation;
 GLuint particleShapeScaleLocation;
 GLuint particlePuffinessLocation;
 GLuint particleShearLocation;
+GLint particleCloudFlashLocation;
+GLint particleCloudFlashCenterLocation;
 GLuint smokeTexture;
 GLuint treeTexture;
 GLuint almondTreeTexture;
@@ -489,6 +491,8 @@ void createContext()
     particleShapeScaleLocation = glGetUniformLocation(particleShaderProgram, "uShapeScale");
     particlePuffinessLocation = glGetUniformLocation(particleShaderProgram, "uPuffiness");
     particleShearLocation = glGetUniformLocation(particleShaderProgram, "uShear");
+    particleCloudFlashLocation = glGetUniformLocation(particleShaderProgram, "uCloudFlash");
+    particleCloudFlashCenterLocation = glGetUniformLocation(particleShaderProgram, "uCloudFlashCenterXZ");
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -1020,6 +1024,7 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
         glUseProgram(particleShaderProgram);
         mat4 PV = projectionMatrix * viewMatrix;
         glUniformMatrix4fv(particlePVLocation, 1, GL_FALSE, &PV[0][0]);
+        glUniform1f(particleCloudFlashLocation, 0.0f);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, smokeTexture);
@@ -1074,7 +1079,12 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             glUniform2f(particleShapeScaleLocation, 1.28f, 0.68f);
             glUniform1f(particlePuffinessLocation, 0.95f);
             glUniform1f(particleShearLocation, 0.0f);
+            glUniform2f(particleCloudFlashCenterLocation,
+                        cloudEmitter->emitter_pos.x, cloudEmitter->emitter_pos.z);
+            glUniform1f(particleCloudFlashLocation,
+                        lightningSystem ? lightningSystem->flashStrength() : 0.0f);
             cloudEmitter->renderParticles();
+            glUniform1f(particleCloudFlashLocation, 0.0f);
         }
         if (rainEmitter) {
             float rainFade = floraSpawned

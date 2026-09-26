@@ -5,6 +5,7 @@ out vec4 fragmentColor;
 in vec2 UV;
 in float vs_life;
 flat in float vs_seed;
+flat in float vs_cloudFlashWeight;
 
 uniform sampler2D texture0; // kept for compatibility; not sampled (see below)
 
@@ -17,6 +18,7 @@ uniform float uAlphaScale = 1.0;
 // multi-lobed silhouette for smoke and clouds, so the billboards overlap as
 // one continuous volume instead of reading as a stack of round particles.
 uniform float uPuffiness = 0.0;
+uniform float uCloudFlash = 0.0;
 
 float puffCircle(vec2 p, vec2 center, float radius) {
     return 1.0 - smoothstep(radius * 0.42, radius, length(p - center));
@@ -57,5 +59,8 @@ void main() {
 
     float alpha = soft * vs_life * uAlphaScale;
     if (alpha < 0.01) discard;
-    fragmentColor = vec4(uTint, alpha);
+    // The storm cloud briefly lights from within when a bolt starts below it.
+    float cloudLight = clamp(uCloudFlash * vs_cloudFlashWeight, 0.0, 1.0);
+    vec3 litTint = mix(uTint, vec3(0.62, 0.68, 0.78), cloudLight * 0.70);
+    fragmentColor = vec4(litTint, alpha);
 }
