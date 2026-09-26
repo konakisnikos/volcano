@@ -7,8 +7,9 @@
 - License: CC0 (public domain; attribution not required)
 - Used as two moving normal-map layers in the river shader
 
-## `stopwatch_hand_atlas.png`
+## `stopwatch_hand_frames/`
 
-- Original image generated for this project with the built-in image generation tool.
-- Four transparent pieces in one atlas: hand base and three button fingers.
-- The user-provided stopwatch photograph was a pose reference only; it is not included in the asset.
+- Based on the hand and stopwatch image supplied by the project owner.
+- The transparent cutout was made with the built-in image generation tool.
+- The PNG layers and finger frames were rendered from `art/stopwatch_hand/stopwatch_hand.blend`.
+- The live stopwatch face, hands, speed text, and button actions are drawn by the application.

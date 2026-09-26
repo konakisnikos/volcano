@@ -12,26 +12,46 @@ namespace {
 const float PI = 3.14159265358979323846f;
 const double SECOND_HAND_REVOLUTION_SECONDS = 30.0;
 const double FINGER_PRESS_SECONDS = 0.28;
-GLuint handAtlas = 0;
+const int FINGER_FRAME_COUNT = 9;
+const float PHOTO_CENTER_X = 519.0f;
+const float PHOTO_CENTER_Y = 668.0f;
+const float PHOTO_CASE_RADIUS = 285.0f;
+GLuint handBack = 0;
+GLuint fingerFrames[3][FINGER_FRAME_COUNT] = {};
 double fingerPressStart[3] = {-1.0, -1.0, -1.0};
 
-struct AtlasRegion {
+struct PhotoRegion {
     float left;
     float top;
     float right;
     float bottom;
 };
 
-void drawHandPart(ImDrawList* draw, const AtlasRegion& source,
-                  const ImVec2& topLeft, const ImVec2& size)
+const PhotoRegion fingerRegions[3] = {
+    {65.0f, 75.0f, 480.0f, 545.0f},
+    {335.0f, 0.0f, 745.0f, 510.0f},
+    {620.0f, 105.0f, 1082.0f, 650.0f}
+};
+
+void drawPhotoRegion(ImDrawList* draw, GLuint texture, const PhotoRegion& region,
+                     const ImVec2& watchCenter, float scale)
 {
-    if (!handAtlas) return;
-    const float atlasWidth = 1672.0f;
-    const float atlasHeight = 941.0f;
-    draw->AddImage(static_cast<ImTextureID>(handAtlas), topLeft,
-                   ImVec2(topLeft.x + size.x, topLeft.y + size.y),
-                   ImVec2(source.left / atlasWidth, source.top / atlasHeight),
-                   ImVec2(source.right / atlasWidth, source.bottom / atlasHeight));
+    if (!texture) return;
+    const float pixelScale = 111.0f / PHOTO_CASE_RADIUS * scale;
+    const ImVec2 topLeft(watchCenter.x + (region.left - PHOTO_CENTER_X) * pixelScale,
+                         watchCenter.y + (region.top - PHOTO_CENTER_Y) * pixelScale);
+    const ImVec2 bottomRight(watchCenter.x + (region.right - PHOTO_CENTER_X) * pixelScale,
+                              watchCenter.y + (region.bottom - PHOTO_CENTER_Y) * pixelScale);
+    draw->AddImage(static_cast<ImTextureID>(texture), topLeft, bottomRight);
+}
+
+int fingerFrame(int finger)
+{
+    if (fingerPressStart[finger] < 0.0) return 0;
+    const double age = ImGui::GetTime() - fingerPressStart[finger];
+    if (age < 0.0 || age >= FINGER_PRESS_SECONDS) return 0;
+    return std::min(FINGER_FRAME_COUNT - 1,
+                    static_cast<int>(age / FINGER_PRESS_SECONDS * FINGER_FRAME_COUNT));
 }
 
 float smoothStep(float value)
@@ -160,15 +180,30 @@ void drawPushButton(ImDrawList* draw, const PushButton& button,
 
 void initializeStopwatchWidget()
 {
-    if (!handAtlas) {
-        handAtlas = loadSOILWithAlpha(ELEMENTAL_ASSET_DIR "/stopwatch_hand_atlas.png");
+    if (!handBack) {
+        handBack = loadSOILWithAlpha(ELEMENTAL_ASSET_DIR "/stopwatch_hand_frames/back.png");
+        const char* names[3] = {"slower", "pause", "faster"};
+        for (int finger = 0; finger < 3; ++finger) {
+            for (int frame = 0; frame < FINGER_FRAME_COUNT; ++frame) {
+                char path[512];
+                std::snprintf(path, sizeof(path), "%s/stopwatch_hand_frames/%s_%d.png",
+                              ELEMENTAL_ASSET_DIR, names[finger], frame);
+                fingerFrames[finger][frame] = loadSOILWithAlpha(path);
+            }
+        }
     }
 }
 
 void shutdownStopwatchWidget()
 {
-    if (handAtlas) glDeleteTextures(1, &handAtlas);
-    handAtlas = 0;
+    if (handBack) glDeleteTextures(1, &handBack);
+    handBack = 0;
+    for (int finger = 0; finger < 3; ++finger) {
+        glDeleteTextures(FINGER_FRAME_COUNT, fingerFrames[finger]);
+        for (int frame = 0; frame < FINGER_FRAME_COUNT; ++frame) {
+            fingerFrames[finger][frame] = 0;
+        }
+    }
 }
 
 void triggerStopwatchFinger(StopwatchAction action)
@@ -183,11 +218,10 @@ void triggerStopwatchFinger(StopwatchAction action)
 StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool paused)
 {
     const ImGuiIO& io = ImGui::GetIO();
-    const float scale = std::max(0.72f, std::min(1.0f, io.DisplaySize.y / 768.0f));
-    const ImVec2 size(350.0f * scale, 426.0f * scale);
-    const ImVec2 position(14.0f * scale,
-                          std::max(8.0f * scale,
-                                   io.DisplaySize.y - size.y - 14.0f * scale));
+    const float scale = std::max(0.68f, std::min(0.88f, io.DisplaySize.y / 768.0f));
+    const ImVec2 size(426.0f * scale, 500.0f * scale);
+    const ImVec2 position(4.0f * scale,
+                          std::max(0.0f, io.DisplaySize.y - size.y));
     ImGui::SetNextWindowPos(position, ImGuiCond_Always);
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
@@ -200,16 +234,18 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
     ImGui::Begin("Simulation stopwatch", nullptr, flags);
     ImDrawList* draw = ImGui::GetWindowDrawList();
     const ImVec2 origin = ImGui::GetWindowPos();
-    const ImVec2 faceOrigin(origin.x + 25.0f * scale,
+    const ImVec2 faceOrigin(origin.x + 64.0f * scale,
                             origin.y + 100.0f * scale);
     const ImVec2 center(faceOrigin.x + 140.0f * scale,
                         faceOrigin.y + 185.0f * scale);
     const float radius = 111.0f * scale;
 
-    drawHandPart(draw, AtlasRegion{105.0f, 145.0f, 850.0f, 925.0f},
-                 ImVec2(faceOrigin.x + 4.0f * scale,
-                        faceOrigin.y + 54.0f * scale),
-                 ImVec2(270.0f * scale, 280.0f * scale));
+    drawPhotoRegion(draw, handBack, PhotoRegion{0.0f, 0.0f, 1082.0f, 1454.0f},
+                    center, scale);
+    for (int finger = 0; finger < 3; ++finger) {
+        drawPhotoRegion(draw, fingerFrames[finger][fingerFrame(finger)],
+                        fingerRegions[finger], center, scale);
+    }
 
     const PushButton slower = buttonHitbox(
         "##slower", ImVec2(center.x - 82.0f * scale, faceOrigin.y + 55.0f * scale),
@@ -218,7 +254,7 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
         "##pause", ImVec2(center.x, faceOrigin.y + 31.0f * scale),
         scale, paused ? "Resume simulation (P)" : "Pause simulation (P)");
     const PushButton faster = buttonHitbox(
-        "##faster", ImVec2(center.x + 82.0f * scale, faceOrigin.y + 55.0f * scale),
+        "##faster", ImVec2(center.x + 75.0f * scale, faceOrigin.y + 55.0f * scale),
         scale, "Double simulation speed (])");
 
     // The pushers emerge from behind the upper edge of the case.
@@ -353,18 +389,6 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
     drawPushButton(draw, pause, scale, 0, paused, middlePress);
     drawPushButton(draw, faster, scale, 1, paused, rightPress);
 
-    drawHandPart(draw, AtlasRegion{510.0f, 30.0f, 840.0f, 300.0f},
-                 ImVec2(slower.center.x - 90.0f * scale,
-                        slower.center.y - 74.0f * scale + leftPress * 9.0f * scale),
-                 ImVec2(100.0f * scale, 82.0f * scale));
-    drawHandPart(draw, AtlasRegion{970.0f, 25.0f, 1170.0f, 310.0f},
-                 ImVec2(pause.center.x - 30.0f * scale,
-                        pause.center.y - 87.0f * scale + middlePress * 9.0f * scale),
-                 ImVec2(60.0f * scale, 91.0f * scale));
-    drawHandPart(draw, AtlasRegion{1270.0f, 30.0f, 1605.0f, 300.0f},
-                 ImVec2(faster.center.x - 9.0f * scale,
-                        faster.center.y - 75.0f * scale + rightPress * 9.0f * scale),
-                 ImVec2(106.0f * scale, 86.0f * scale));
     ImGui::End();
 
     if (slower.clicked) return StopwatchAction::Slower;
