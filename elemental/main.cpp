@@ -1068,7 +1068,7 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             ashEmitter->renderParticles();
         }
         if (cloudEmitter) {
-            glUniform3f(particleTintLocation, 0.37f, 0.39f, 0.47f);
+            glUniform3f(particleTintLocation, 0.25f, 0.27f, 0.33f);
             glUniform1f(particleAlphaLocation,
                         0.42f * (1.0f - calmProgress));
             glUniform2f(particleShapeScaleLocation, 1.28f, 0.68f);
