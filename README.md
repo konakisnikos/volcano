@@ -6,6 +6,9 @@ The presentation begins with a quiet night scene, follows lava, ash, clouds,
 rain and vegetation, then ends with lightning energising the river before the
 landscape settles into a calm night.
 
+The opening cloud bank is a slowly drifting transparent image in the skybox.
+The later storm cloud and rain still use particle emitters.
+
 The implementation intentionally uses direct, lab-style OpenGL techniques:
 procedural meshes, GLSL shaders, classic Phong lighting, a 2048×2048 shadow
 map, instanced particles and vegetation, alpha-cutout tree billboards, and a

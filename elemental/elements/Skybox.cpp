@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "common/shader.h"
+#include "common/texture.h"
 
 static const float SKYBOX_VERTICES[] = {
 	// positions
@@ -55,6 +56,7 @@ static const float SKYBOX_VERTICES[] = {
 Skybox::Skybox(const std::vector<std::string>& faces)
 	: m_drawable(nullptr),
 	  m_cubemapTexture(0),
+	  m_cloudTexture(0),
 	  m_shaderProgram(0),
 	  m_viewLocation(-1),
 	  m_projectionLocation(-1),
@@ -65,6 +67,7 @@ Skybox::Skybox(const std::vector<std::string>& faces)
 {
 	setupMesh();
 	loadCubemap(faces);
+	m_cloudTexture = loadSOILWithAlpha(ELEMENTAL_ASSET_DIR "/ambient_cloud_bank.png");
 	m_shaderProgram = ::loadShaders(ELEMENTAL_SHADER_DIR "/Skybox.vertexshader",
 	                              ELEMENTAL_SHADER_DIR "/Skybox.fragmentshader");
 	m_viewLocation = glGetUniformLocation(m_shaderProgram, "V");
@@ -79,6 +82,11 @@ Skybox::Skybox(const std::vector<std::string>& faces)
 	if (samplerLocation >= 0)
 	{
 		glUniform1i(samplerLocation, 0);
+	}
+	GLint cloudSamplerLocation = glGetUniformLocation(m_shaderProgram, "uCloudBank");
+	if (cloudSamplerLocation >= 0)
+	{
+		glUniform1i(cloudSamplerLocation, 1);
 	}
 	glUseProgram(0);
 }
@@ -95,6 +103,11 @@ Skybox::~Skybox()
 	{
 		glDeleteTextures(1, &m_cubemapTexture);
 		m_cubemapTexture = 0;
+	}
+	if (m_cloudTexture != 0)
+	{
+		glDeleteTextures(1, &m_cloudTexture);
+		m_cloudTexture = 0;
 	}
 
 	if (m_shaderProgram != 0)
@@ -149,10 +162,14 @@ void Skybox::Draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, m_cubemapTexture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_cloudTexture);
 
 	m_drawable->bind();
 	m_drawable->draw();
 
+	glBindTexture(GL_TEXTURE_2D, 0);
+	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
 	glUseProgram(0);
 

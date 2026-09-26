@@ -21,6 +21,7 @@ public:
 private:
     Drawable *m_drawable;
     GLuint m_cubemapTexture;
+    GLuint m_cloudTexture;
     GLuint m_shaderProgram;
     GLint m_viewLocation;
     GLint m_projectionLocation;

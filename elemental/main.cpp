@@ -139,7 +139,6 @@ Drawable* grassField;     // one combined mesh containing the grass blades
 Drawable* particleQuad;   // flat camera-facing quad, used for all particle emitters
 SmokeEmitter* smokeEmitter;
 SmokeEmitter* calmSmokeEmitter = nullptr;
-CloudEmitter* ambientCloudEmitter = nullptr;
 
 // The CPU trigger and both terrain shaders use this flow speed.
 const float LAVA_FLOW_SPEED = 20.0f;
@@ -575,11 +574,6 @@ void createContext()
         34.0f, 14.0f,
         0.075f);
 
-    // Sparse ambient clouds are separate from the later storm cloud.
-    ambientCloudEmitter = new CloudEmitter(
-        particleQuad, 72, glm::vec3(-75.0f, 480.0f, -470.0f),
-        540.0f, 88.0f, 22.0f, 46.0f, 0.55f, 3.2f);
-
     throwOnOpenGLError("scene resource creation");
 }
 
@@ -587,13 +581,11 @@ void resetSimulation(double realTimeSeconds)
 {
     delete smokeEmitter;
     delete calmSmokeEmitter;
-    delete ambientCloudEmitter;
     delete ashEmitter;
     delete cloudEmitter;
     delete rainEmitter;
     smokeEmitter = nullptr;
     calmSmokeEmitter = nullptr;
-    ambientCloudEmitter = nullptr;
     ashEmitter = nullptr;
     cloudEmitter = nullptr;
     rainEmitter = nullptr;
@@ -608,10 +600,6 @@ void resetSimulation(double realTimeSeconds)
     smokeEmitter = new SmokeEmitter(
         particleQuad, 760, craterPos,
         38.0f, 10.0f, 38.0f, 34.0f, 14.0f, 0.075f);
-    ambientCloudEmitter = new CloudEmitter(
-        particleQuad, 72, glm::vec3(-75.0f, 480.0f, -470.0f),
-        540.0f, 88.0f, 22.0f, 46.0f, 0.55f, 3.2f);
-
     lavaCoolStartTime = -1.0f;
     rainStartTime = -1.0f;
     floraGrowthStartTime = -1.0f;
@@ -670,7 +658,6 @@ void free()
         delete skybox;
         delete smokeEmitter;
         delete calmSmokeEmitter;
-        delete ambientCloudEmitter;
         delete ashEmitter;
         delete cloudEmitter;
         delete rainEmitter;
@@ -685,7 +672,6 @@ void free()
         skybox = nullptr;
         smokeEmitter = nullptr;
         calmSmokeEmitter = nullptr;
-        ambientCloudEmitter = nullptr;
         ashEmitter = nullptr;
         cloudEmitter = nullptr;
         rainEmitter = nullptr;
@@ -826,9 +812,6 @@ static float updateParticleSystems(float simulationTime, float simulationDelta, 
     if (calmSmokeEmitter) {
         calmSmokeEmitter->updateParticles(simulationTime, simulationDelta,
                                           camera->position);
-    }
-    if (ambientCloudEmitter) {
-        ambientCloudEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
     }
     if (ashEmitter) {
         // Recycle particles at the moving end-to-start cooling boundary.
@@ -1030,7 +1013,7 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
 {
     // Draw smoke/ash/cloud last (transparent)
     bool drawSmoke = smokeEmitter && sceneDirector && lavaTimeForSmoke >= 0.0f;
-    if (drawSmoke || calmSmokeEmitter || ambientCloudEmitter || ashEmitter ||
+    if (drawSmoke || calmSmokeEmitter || ashEmitter ||
         cloudEmitter || rainEmitter) {
         glDepthMask(GL_FALSE);
 
@@ -1062,15 +1045,6 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             glUniform1f(particlePuffinessLocation, 0.94f);
             glUniform1f(particleShearLocation, 0.0f);
             calmSmokeEmitter->renderParticles();
-        }
-        if (ambientCloudEmitter) {
-            glUniform3f(particleTintLocation, 0.41f, 0.43f, 0.50f);
-            glUniform1f(particleAlphaLocation,
-                        glm::mix(0.30f, 0.035f, calmProgress));
-            glUniform2f(particleShapeScaleLocation, 1.35f, 0.72f);
-            glUniform1f(particlePuffinessLocation, 0.9f);
-            glUniform1f(particleShearLocation, 0.0f);
-            ambientCloudEmitter->renderParticles();
         }
         if (ashEmitter) {
             float ashAge = sceneDirector &&
@@ -1267,7 +1241,9 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
     // The storm is finite: at most three early strikes establish the
     // weather, then three deliberate meadow strikes happen after the
     // vegetation has grown. B remains a manual demonstration shortcut.
-    CloudEmitter* lightningCloud = cloudEmitter ? cloudEmitter : ambientCloudEmitter;
+    // Before the storm cloud forms, manual lightning keeps its original origin.
+    const glm::vec3 lightningOrigin = cloudEmitter
+        ? cloudEmitter->emitter_pos : glm::vec3(-75.0f, 480.0f, -470.0f);
     const SimulationStage currentStage = sceneDirector->getStage();
     const bool earlyStormStage = currentStage == SimulationStage::CloudFormation ||
                                  currentStage == SimulationStage::Raining ||
@@ -1281,8 +1257,7 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
         vegetationGroundStrikeCount < 3 && nextLightningTime >= 0.0f &&
         simulationTime >= nextLightningTime && !lightningSystem->isActive();
 
-    if (lightningCloud &&
-        (manualLightningRequested || automaticEarlyStrike || automaticMeadowStrike)) {
+    if (manualLightningRequested || automaticEarlyStrike || automaticMeadowStrike) {
         glm::vec3 strike;
         if (automaticMeadowStrike) {
             // Alternate strike targets between riverbanks.
@@ -1293,9 +1268,9 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
             ++vegetationGroundStrikeCount;
             nextLightningTime = simulationTime + 3.2f;
         } else {
-            const float strikeX = lightningCloud->emitter_pos.x - 110.0f
+            const float strikeX = lightningOrigin.x - 110.0f
                                 + lightningRandom01() * 220.0f;
-            const float strikeZ = lightningCloud->emitter_pos.z - 70.0f
+            const float strikeZ = lightningOrigin.z - 70.0f
                                 + lightningRandom01() * 140.0f;
             strike = glm::vec3(strikeX,
                                volcano->surfaceHeightAt(strikeX, strikeZ) + 2.0f,
@@ -1305,7 +1280,7 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
                 nextLightningTime = simulationTime + 7.0f;
             }
         }
-        lightningSystem->trigger(simulationTime, lightningCloud->emitter_pos, strike);
+        lightningSystem->trigger(simulationTime, lightningOrigin, strike);
         manualLightningRequested = false;
     }
 
