@@ -152,12 +152,13 @@ const float LAVA_COOL_DURATION = 8.0f;
 SmokeEmitter* ashEmitter = nullptr;
 float lavaCoolStartTime = -1.0f; // lavaTime at which cooling began, or -1 if not yet
 
-// Delay between lava cooling and cloud formation.
-const float CLOUD_FORM_DELAY = 8.5f; // begins just after the slower cooling front completes
+// The storm cloud starts while the last part of the lava is still cooling.
+const float CLOUD_FORM_DELAY = 5.5f;
+const float CLOUD_FORM_DURATION = 5.5f;
 CloudEmitter* cloudEmitter = nullptr;
 
 // Delay between cloud formation and rainfall.
-const float RAIN_START_DELAY = 3.0f; // seconds after the cloud appears before it starts raining
+const float RAIN_START_DELAY = 6.0f; // let the cloud finish forming before rain begins
 RainEmitter* rainEmitter = nullptr;
 float rainStartTime = -1.0f; // lavaTime at which rain began, or -1 if not yet
 const float WATER_FILL_DURATION = 22.0f; // slower rainfall/runoff accumulation
@@ -170,7 +171,7 @@ LightningSystem* lightningSystem = nullptr;
 std::vector<glm::vec2> scorchPositions;
 std::vector<float> scorchRadii;
 std::vector<float> scorchStrengths;
-const float LIGHTNING_START_DELAY = 2.15f;
+const float LIGHTNING_START_DELAY = 5.15f;
 float nextLightningTime = -1.0f;
 bool manualLightningRequested = false;
 int earlyGroundStrikeCount = 0;
@@ -1067,7 +1068,7 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             float ashFormation = glm::smoothstep(0.0f, 1.4f, ashAge);
             float ashCooling = glm::smoothstep(0.0f, LAVA_COOL_DURATION, ashAge);
             float ashFade = cloudEmitter
-                ? 1.0f - glm::smoothstep(0.0f, 6.0f,
+                ? 1.0f - glm::smoothstep(0.0f, CLOUD_FORM_DURATION,
                                          lavaTime - (lavaCoolStartTime + CLOUD_FORM_DELAY))
                 : 1.0f;
             glm::vec3 warmAsh(0.22f, 0.185f, 0.17f);
@@ -1081,9 +1082,16 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             ashEmitter->renderParticles();
         }
         if (cloudEmitter) {
+            const float cloudAge = sceneDirector &&
+                                   sceneDirector->getStage() == SimulationStage::CloudFormation
+                ? sceneDirector->getStageElapsedSeconds()
+                : CLOUD_FORM_DURATION;
+            const float cloudBuild = glm::smoothstep(0.0f, CLOUD_FORM_DURATION,
+                                                     cloudAge);
             glUniform3f(particleTintLocation, 0.18f, 0.20f, 0.26f);
+            // Dense overlapping puffs need a slower opacity ramp than their scale growth.
             glUniform1f(particleAlphaLocation,
-                        0.55f * (1.0f - calmProgress));
+                        0.55f * cloudBuild * cloudBuild * (1.0f - calmProgress));
             glUniform2f(particleShapeScaleLocation, 1.05f, 0.94f);
             glUniform1f(particlePuffinessLocation, 0.95f);
             glUniform1f(particleShearLocation, 0.0f);
@@ -1248,7 +1256,7 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
             glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
         cloudEmitter = new CloudEmitter(
             particleQuad, 1000, cloudPos,
-            310.0f, 232.0f, 22.0f, 39.0f, 0.28f, 3.0f);
+            310.0f, 232.0f, 22.0f, 39.0f, 0.28f, 5.0f);
         sceneDirector->transitionTo(SimulationStage::CloudFormation);
         nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
     }
@@ -1574,8 +1582,8 @@ void mainLoop()
             float stormProgress = 0.0f;
             if (cloudEmitter && sceneDirector) {
                 const float cloudAge = sceneDirector->getStage() == SimulationStage::CloudFormation
-                    ? sceneDirector->getStageElapsedSeconds() : 3.0f;
-                stormProgress = glm::smoothstep(0.0f, 3.0f, cloudAge);
+                    ? sceneDirector->getStageElapsedSeconds() : CLOUD_FORM_DURATION;
+                stormProgress = glm::smoothstep(0.0f, CLOUD_FORM_DURATION, cloudAge);
             }
             glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
             skybox->Draw(viewMatrix, projectionMatrix,
