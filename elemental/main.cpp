@@ -130,10 +130,9 @@ GLuint particlePuffinessLocation;
 GLuint particleShearLocation;
 GLint particleCloudFlashLocation;
 GLint particleCloudFlashCenterLocation;
-GLint particleCloudGuideSampler;
-GLint particleCloudGuideEnabled;
-GLint particleCloudGuideCenter;
-GLint particleCloudGuideSize;
+GLint particleStormCloudStyle;
+GLint particleStormCloudCenter;
+GLint particleStormCloudHeight;
 GLuint smokeTexture;
 GLuint treeTexture;
 GLuint almondTreeTexture;
@@ -498,10 +497,9 @@ void createContext()
     particleShearLocation = glGetUniformLocation(particleShaderProgram, "uShear");
     particleCloudFlashLocation = glGetUniformLocation(particleShaderProgram, "uCloudFlash");
     particleCloudFlashCenterLocation = glGetUniformLocation(particleShaderProgram, "uCloudFlashCenterXZ");
-    particleCloudGuideSampler = glGetUniformLocation(particleShaderProgram, "uCloudGuide");
-    particleCloudGuideEnabled = glGetUniformLocation(particleShaderProgram, "uUseCloudGuide");
-    particleCloudGuideCenter = glGetUniformLocation(particleShaderProgram, "uCloudGuideCenter");
-    particleCloudGuideSize = glGetUniformLocation(particleShaderProgram, "uCloudGuideSize");
+    particleStormCloudStyle = glGetUniformLocation(particleShaderProgram, "uStormCloudStyle");
+    particleStormCloudCenter = glGetUniformLocation(particleShaderProgram, "uStormCloudCenter");
+    particleStormCloudHeight = glGetUniformLocation(particleShaderProgram, "uStormCloudHeight");
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -1092,25 +1090,19 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             // Dense overlapping puffs need a slower opacity ramp than their scale growth.
             glUniform1f(particleAlphaLocation,
                         0.55f * cloudBuild * cloudBuild * (1.0f - calmProgress));
-            glUniform2f(particleShapeScaleLocation, 1.05f, 0.94f);
+            glUniform2f(particleShapeScaleLocation, 1.07f, 1.02f);
             glUniform1f(particlePuffinessLocation, 0.95f);
             glUniform1f(particleShearLocation, 0.0f);
-            glActiveTexture(GL_TEXTURE1);
-            glBindTexture(GL_TEXTURE_2D, cloudEmitter->guideTexture());
-            glUniform1i(particleCloudGuideSampler, 1);
-            glUniform1i(particleCloudGuideEnabled, cloudEmitter->guideTexture() != 0);
-            glUniform3fv(particleCloudGuideCenter, 1, &cloudEmitter->emitter_pos[0]);
-            glm::vec2 cloudSize = cloudEmitter->guideSize();
-            glUniform2fv(particleCloudGuideSize, 1, &cloudSize[0]);
+            glUniform1i(particleStormCloudStyle, 1);
+            glUniform3fv(particleStormCloudCenter, 1, &cloudEmitter->emitter_pos[0]);
+            glUniform1f(particleStormCloudHeight, cloudEmitter->verticalSpread);
             glUniform2f(particleCloudFlashCenterLocation,
                         cloudEmitter->emitter_pos.x, cloudEmitter->emitter_pos.z);
             glUniform1f(particleCloudFlashLocation,
                         lightningSystem ? lightningSystem->flashStrength() : 0.0f);
             cloudEmitter->renderParticles();
             glUniform1f(particleCloudFlashLocation, 0.0f);
-            glUniform1i(particleCloudGuideEnabled, 0);
-            glBindTexture(GL_TEXTURE_2D, 0);
-            glActiveTexture(GL_TEXTURE0);
+            glUniform1i(particleStormCloudStyle, 0);
         }
         if (rainEmitter) {
             float rainFade = floraSpawned
@@ -1251,12 +1243,12 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
         sceneDirector->getStageElapsedSeconds() >= CLOUD_FORM_DELAY) {
         // Form a broad cloud above the river and volcano.
         glm::vec3 cloudPos(
-            glm::mix(stats.craterCenter.x, stats.riverEndXZ.x, 0.48f),
-            stats.craterTop + 230.0f,
+            glm::mix(stats.craterCenter.x, stats.riverEndXZ.x, 0.48f) + 40.0f,
+            stats.craterTop + 185.0f,
             glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
         cloudEmitter = new CloudEmitter(
-            particleQuad, 1000, cloudPos,
-            310.0f, 232.0f, 22.0f, 39.0f, 0.28f, 5.0f);
+            particleQuad, 2400, cloudPos,
+            270.0f, 175.0f, 20.0f, 40.0f, 0.28f, 5.0f);
         sceneDirector->transitionTo(SimulationStage::CloudFormation);
         nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
     }

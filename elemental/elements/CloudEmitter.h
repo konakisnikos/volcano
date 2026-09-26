@@ -6,8 +6,8 @@
 // Cloud particles grow in place before drifting.
 // Unlike SmokeEmitter, particles don't rise and die/respawn — they spawn once,
 // drift gently, and grow from nothing into a steady puff as the cloud "forms".
-// life here means formation progress (0 = just spawned, 1 = fully formed), the
-// opposite convention from SmokeEmitter where life counts down to death.
+// life starts below zero for a staggered appearance and rises to opacityLimit;
+// SmokeEmitter instead counts life down to respawn.
 class CloudEmitter : public IntParticleEmitter {
     public:
         CloudEmitter(Drawable* _model,
@@ -19,10 +19,6 @@ class CloudEmitter : public IntParticleEmitter {
                       float maxPuffSize = 40.0f,
                       float driftSpeed = 3.0f,
                       float formationSeconds = 6.0f);
-        ~CloudEmitter() override;
-
-        GLuint guideTexture() const { return m_guideTexture; }
-        glm::vec2 guideSize() const { return glm::vec2(radius * 2.0f, verticalSpread); }
 
         float radius = 150.0f;
         float verticalSpread = 40.0f;
@@ -37,11 +33,6 @@ class CloudEmitter : public IntParticleEmitter {
         void createNewParticle(int index) override;
         void updateParticles(float time, float dt, glm::vec3 camera_pos = glm::vec3(0, 0, 0)) override;
 
-    private:
-        std::vector<unsigned char> m_guidePixels;
-        int m_guideWidth = 0;
-        int m_guideHeight = 0;
-        GLuint m_guideTexture = 0;
 };
 
 #endif // CLOUDEMITTER_H

@@ -7,8 +7,8 @@ rain and vegetation, then ends with lightning energising the river before the
 landscape settles into a calm night.
 
 The opening cloud bank is a slowly drifting transparent image in the skybox.
-The later storm cloud uses moving particles guided by the density and color of
-a transparent cloud image; rain uses a separate particle emitter.
+The later storm cloud is a dense procedural particle volume with a raised,
+irregular center; rain uses a separate particle emitter.
 
 The implementation intentionally uses direct, lab-style OpenGL techniques:
 procedural meshes, GLSL shaders, classic Phong lighting, a 2048×2048 shadow

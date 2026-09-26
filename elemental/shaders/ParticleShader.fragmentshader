@@ -9,10 +9,9 @@ flat in float vs_seed;
 flat in float vs_cloudFlashWeight;
 
 uniform sampler2D texture0; // kept for compatibility; not sampled (see below)
-uniform sampler2D uCloudGuide;
-uniform bool uUseCloudGuide = false;
-uniform vec3 uCloudGuideCenter;
-uniform vec2 uCloudGuideSize;
+uniform bool uStormCloudStyle = false;
+uniform vec3 uStormCloudCenter;
+uniform float uStormCloudHeight;
 
 // Each emitter supplies its own color + opacity. The soft round shape is generated
 // procedurally from the quad's UVs rather than from the (near-black) smoke texture,
@@ -64,16 +63,20 @@ void main() {
 
     float alpha = soft * vs_life * uAlphaScale;
     vec3 baseTint = uTint;
-    if (uUseCloudGuide) {
-        vec2 guideUv = vec2((vs_worldPosition.x - uCloudGuideCenter.x)
-                             / uCloudGuideSize.x + 0.5,
-                            0.5 - (vs_worldPosition.y - uCloudGuideCenter.y)
-                             / uCloudGuideSize.y);
-        if (any(lessThan(guideUv, vec2(0.0))) ||
-            any(greaterThan(guideUv, vec2(1.0)))) discard;
-        vec4 guide = texture(uCloudGuide, guideUv);
-        alpha *= smoothstep(0.03, 0.42, guide.a);
-        baseTint = guide.rgb * vec3(0.66, 0.69, 0.75);
+    if (uStormCloudStyle) {
+        float height = clamp((vs_worldPosition.y - uStormCloudCenter.y)
+                             / uStormCloudHeight + 0.32, 0.0, 1.0);
+        float topLight = smoothstep(0.16, 0.95, height);
+        float billow = 0.5 + 0.5
+                     * sin(vs_worldPosition.x * 0.067 + vs_worldPosition.y * 0.034)
+                     * sin(vs_worldPosition.y * 0.081 - vs_worldPosition.z * 0.029);
+        baseTint = mix(vec3(0.075, 0.095, 0.135),
+                       vec3(0.27, 0.32, 0.39), topLight)
+                 * mix(0.67, 1.26, smoothstep(-0.28, 0.30, p.y))
+                 * mix(0.68, 1.28, billow)
+                 * mix(0.78, 1.16, vs_seed);
+        float interior = 1.0 - smoothstep(0.08, 0.42, length(p));
+        alpha = min(alpha * (1.55 + 0.75 * interior), 0.98);
     }
     if (alpha < 0.01) discard;
     // The storm cloud briefly lights from within when a bolt starts below it.
