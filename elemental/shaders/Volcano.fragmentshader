@@ -510,7 +510,7 @@ void main() {
    float craterFalloff = 1.0 - smoothstep(u_CraterRadius * 0.85,
                                          u_CraterRadius * 2.0,
                                          length(craterLocal));
-   vec3 lavaBankLight = vec3(0.36, 0.084, 0.008)
+   vec3 lavaBankLight = vec3(0.28, 0.065, 0.006)
                       * (bankFalloff * activeBank
                          + craterFalloff * lavaActive * (1.0 - lavaMix) * 0.45);
    // Approximate sky reflection on water under low ambient light.
