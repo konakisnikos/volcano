@@ -23,6 +23,7 @@ uniform float uAlphaScale = 1.0;
 // one continuous volume instead of reading as a stack of round particles.
 uniform float uPuffiness = 0.0;
 uniform float uCloudFlash = 0.0;
+uniform vec2 uTopFadeRange = vec2(1000000.0, 1000001.0);
 
 float puffCircle(vec2 p, vec2 center, float radius) {
     return 1.0 - smoothstep(radius * 0.42, radius, length(p - center));
@@ -78,6 +79,8 @@ void main() {
         float interior = 1.0 - smoothstep(0.08, 0.42, length(p));
         alpha = min(alpha * (1.55 + 0.75 * interior), 0.98);
     }
+    alpha *= 1.0 - smoothstep(uTopFadeRange.x, uTopFadeRange.y,
+                              vs_worldPosition.y);
     if (alpha < 0.01) discard;
     // The storm cloud briefly lights from within when a bolt starts below it.
     float cloudLight = clamp(uCloudFlash * vs_cloudFlashWeight, 0.0, 1.0);

@@ -133,6 +133,7 @@ GLint particleCloudFlashCenterLocation;
 GLint particleStormCloudStyle;
 GLint particleStormCloudCenter;
 GLint particleStormCloudHeight;
+GLint particleTopFadeRange;
 GLuint smokeTexture;
 GLuint treeTexture;
 GLuint almondTreeTexture;
@@ -154,6 +155,8 @@ float lavaCoolStartTime = -1.0f; // lavaTime at which cooling began, or -1 if no
 // The storm cloud starts while the last part of the lava is still cooling.
 const float CLOUD_FORM_DELAY = 5.5f;
 const float CLOUD_FORM_DURATION = 5.5f;
+const float CLOUD_HEIGHT_ABOVE_CRATER = 185.0f;
+const float CLOUD_VERTICAL_SPREAD = 160.0f;
 CloudEmitter* cloudEmitter = nullptr;
 
 // Delay between cloud formation and rainfall.
@@ -500,6 +503,7 @@ void createContext()
     particleStormCloudStyle = glGetUniformLocation(particleShaderProgram, "uStormCloudStyle");
     particleStormCloudCenter = glGetUniformLocation(particleShaderProgram, "uStormCloudCenter");
     particleStormCloudHeight = glGetUniformLocation(particleShaderProgram, "uStormCloudHeight");
+    particleTopFadeRange = glGetUniformLocation(particleShaderProgram, "uTopFadeRange");
 
     glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -832,7 +836,7 @@ static float updateParticleSystems(float simulationTime, float simulationDelta, 
             ashEmitter->followMovingSource(
                 coolingFrontWorldPosition(lavaTimeForSmoke),
                 simulationDelta,
-                210.0f);
+                250.0f);
         }
         ashEmitter->updateParticles(simulationTime, simulationDelta, camera->position);
     }
@@ -1066,18 +1070,24 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             float ashFormation = glm::smoothstep(0.0f, 1.4f, ashAge);
             float ashCooling = glm::smoothstep(0.0f, LAVA_COOL_DURATION, ashAge);
             float ashFade = cloudEmitter
-                ? 1.0f - glm::smoothstep(0.0f, CLOUD_FORM_DURATION,
+                ? 1.0f - glm::smoothstep(2.0f, 7.0f,
                                          lavaTime - (lavaCoolStartTime + CLOUD_FORM_DELAY))
                 : 1.0f;
-            glm::vec3 warmAsh(0.22f, 0.185f, 0.17f);
-            glm::vec3 coolAsh(0.145f, 0.15f, 0.17f);
+            glm::vec3 warmAsh(0.285f, 0.265f, 0.25f);
+            glm::vec3 coolAsh(0.25f, 0.265f, 0.29f);
             glm::vec3 ashTint = glm::mix(warmAsh, coolAsh, ashCooling);
             glUniform3f(particleTintLocation, ashTint.r, ashTint.g, ashTint.b);
-            glUniform1f(particleAlphaLocation, 0.24f * ashFormation * ashFade);
+            glUniform1f(particleAlphaLocation, 0.28f * ashFormation * ashFade);
             glUniform2f(particleShapeScaleLocation, 0.78f, 1.08f);
             glUniform1f(particlePuffinessLocation, 0.92f);
             glUniform1f(particleShearLocation, 0.0f);
+            // Let the rising cooling smoke dissolve into the cloud underside.
+            const float cloudBaseY = stats.craterTop + CLOUD_HEIGHT_ABOVE_CRATER
+                                   - 0.30f * CLOUD_VERTICAL_SPREAD;
+            glUniform2f(particleTopFadeRange,
+                        cloudBaseY - 40.0f, cloudBaseY + 55.0f);
             ashEmitter->renderParticles();
+            glUniform2f(particleTopFadeRange, 1000000.0f, 1000001.0f);
         }
         if (cloudEmitter) {
             const float cloudAge = sceneDirector &&
@@ -1229,12 +1239,13 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
 
             glm::vec3 riverEndPos = coolingFrontWorldPosition(lavaTime);
             ashEmitter = new SmokeEmitter(
-                particleQuad, 1300, riverEndPos,
-                14.0f,    // compact band around the cooling boundary
-                3.0f, 11.0f,
-                38.0f, 12.0f,
-                0.12f);
-            ashEmitter->plumeHeight = 420.0f;
+                particleQuad, 1700, riverEndPos,
+                16.0f,    // compact band around the cooling boundary
+                5.0f, 18.0f,
+                54.0f, 18.0f,
+                0.055f);
+            ashEmitter->plumeHeight = 540.0f;
+            ashEmitter->turbulence = 0.40f;
             sceneDirector->transitionTo(SimulationStage::SmokeAndAsh);
         }
     }
@@ -1244,11 +1255,11 @@ static void advanceElementalEvents(float lavaTime, float simulationTime,
         // Form a broad cloud above the river and volcano.
         glm::vec3 cloudPos(
             glm::mix(stats.craterCenter.x, stats.riverEndXZ.x, 0.48f) + 40.0f,
-            stats.craterTop + 185.0f,
+            stats.craterTop + CLOUD_HEIGHT_ABOVE_CRATER,
             glm::mix(stats.craterCenter.y, stats.riverEndXZ.y, 0.48f));
         cloudEmitter = new CloudEmitter(
             particleQuad, 2400, cloudPos,
-            270.0f, 175.0f, 20.0f, 40.0f, 0.28f, 5.0f);
+            270.0f, CLOUD_VERTICAL_SPREAD, 20.0f, 40.0f, 0.28f, 5.0f);
         sceneDirector->transitionTo(SimulationStage::CloudFormation);
         nextLightningTime = simulationTime + LIGHTNING_START_DELAY;
     }
