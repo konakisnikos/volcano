@@ -15,8 +15,13 @@ out vec4 fragment_color;
 uniform sampler2D uTerrainTexture;
 uniform sampler2D uLavaTexture;
 uniform float uLavaTextureBlend;
+uniform float uLavaEmission;
+uniform float uLavaGlowWidth;
+uniform float uLavaGlowIntensity;
 uniform sampler2D uWaterNormalTexture;
 uniform float uWaterNormalStrength;
+uniform float uWaterBrightness;
+uniform float uWaterReflection;
 uniform float u_LavaTime;
 uniform float u_LavaFlowSpeed;
 
@@ -382,6 +387,7 @@ void main() {
    vec3 waterMoon = vec3(0.18, 0.40, 0.58);
    vec3 waterColor = mix(waterDeep, waterMoon,
                          0.18 + waterFresnel * 0.62 + wavePattern * 0.055);
+   waterColor *= uWaterBrightness;
    finalAlbedo = mix(finalAlbedo, waterColor, waterMix);
 
    // Electrical energy spreads from the impact point and stays within the water mask.
@@ -482,7 +488,8 @@ void main() {
    float specular_factor = pow(specularAlignment, Ns);
    vec4 Is = light[0].Ls * Ks * specular_factor;
    float waterSpecular = pow(specularAlignment, 20.0) * waterMix;
-   vec4 waterHighlight = vec4(vec3(0.34, 0.46, 0.62) * waterSpecular, 0.0);
+   vec4 waterHighlight = vec4(vec3(0.34, 0.46, 0.62)
+                              * waterSpecular * uWaterReflection, 0.0);
 
    // Lava is predominantly emissive; reducing reflected moonlight prevents the
    // orange surface plus blue direct light from clipping to flat white.
@@ -496,13 +503,14 @@ void main() {
 
    // Emission keeps the flow vivid under moonlight; nearby rock catches its warmth.
    vec3 emission = finalLavaColor * lavaMix
-                 * (0.46 + 0.25 * hotVeins + 0.14 * crackCore + 0.06 * lavaPulse);
+                 * (0.46 + 0.25 * hotVeins + 0.14 * crackCore + 0.06 * lavaPulse)
+                 * uLavaEmission;
    // Warm bounce follows the active flow and fades as the surface cools.
    float riverExtent = smoothstep(u_RiverInnerRadius - 20.0,
                                   u_RiverInnerRadius + 10.0, vDist)
                      * (1.0 - smoothstep(u_RiverOuterRadius - 25.0,
                                          u_RiverOuterRadius + 5.0, vDist));
-   float bankFalloff = 1.0 - smoothstep(5.0, 105.0,
+   float bankFalloff = 1.0 - smoothstep(5.0, uLavaGlowWidth,
                                        max(vRiverBankDistance, 0.0));
    float activeBank = lavaActive * riverExtent
                     * smoothstep(0.10, 0.85, flowMask)
@@ -512,11 +520,13 @@ void main() {
                                          length(craterLocal));
    vec3 lavaBankLight = vec3(0.28, 0.065, 0.006)
                       * (bankFalloff * activeBank
-                         + craterFalloff * lavaActive * (1.0 - lavaMix) * 0.45);
+                         + craterFalloff * lavaActive * (1.0 - lavaMix) * 0.45)
+                      * uLavaGlowIntensity;
    // Approximate sky reflection on water under low ambient light.
    vec3 waterReflection = waterColor * waterMix
                         * (0.18 + 0.20 * waterFresnel
-                           + 0.045 * max(wavePattern, 0.0));
+                           + 0.045 * max(wavePattern, 0.0))
+                        * uWaterReflection;
    vec3 electricEmission = vec3(0.18, 0.58, 1.0) * electricEnergy * 0.92;
    // Add weak bounced light to steep channel walls.
    float steepChannel = riverBedMask

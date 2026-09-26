@@ -83,8 +83,11 @@ at 2× speed and above. It pauses and accelerates with the scene. The dial
 shows the speed; there is no digital time readout. A hand holds the watch, and
 the finger above each button briefly presses it for mouse and keyboard input.
 The finger animation uses real time, so it remains visible while paused.
-Other controls, including
-the lava and water sliders, are available separately with F2. The camera uses
+Other controls are available separately with F2. Its visual settings adjust
+lava glow and shore reach, water brightness and reflections, and storm cloud
+and cooling-smoke opacity. `Reset visuals` restores the selected default appearance;
+`Copy visual settings` copies the current values as launch arguments so they
+can be reused or shared. The camera uses
 a fixed view of the volcano and river throughout the sequence, apart from the
 brief scripted shake before the eruption.
 
@@ -105,7 +108,8 @@ Add `--report-performance` to print the uncapped average frame rate together
 with p95, p99 and maximum frame times. On macOS, use fullscreen for the final
 presentation: the deprecated windowed OpenGL path can have uneven compositor
 frame pacing even when the renderer has ample performance headroom.
-Add `--show-controls` to display the stopwatch in an automated screenshot.
+Add `--show-controls` to display the stopwatch or `--show-settings` to display
+the F2 panel in an automated screenshot.
 
 Lava and water texture strengths can also be selected from the command line:
 
@@ -117,7 +121,9 @@ Lava and water texture strengths can also be selected from the command line:
 ./build/elemental --water-normal-strength 0.65
 ```
 
-Both texture strengths are also available in the `F2` panel during a run.
+Both texture strengths and the other visual settings are also available in the
+`F2` panel during a run. For example, `--lava-emission 1.25
+--lava-glow-width 140 --water-brightness 0.80` overrides the defaults.
 
 ## Code map
 

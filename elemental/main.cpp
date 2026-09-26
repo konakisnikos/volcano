@@ -59,8 +59,18 @@ void resetSimulation(double realTimeSeconds);
 bool gWindowed = false;
 bool gAutoExitOnComplete = false;
 bool gReportPerformance = false;
-float gLavaTextureBlend = 0.20f;
-float gWaterNormalStrength = 0.65f;
+struct VisualTuning {
+    float lavaEmission = 1.29f;
+    float lavaGlowWidth = 38.0f;
+    float lavaGlowIntensity = 1.39f;
+    float lavaTextureBlend = 0.30f;
+    float waterBrightness = 1.19f;
+    float waterReflection = 1.49f;
+    float waterNormalStrength = 1.0f;
+    float stormCloudOpacity = 0.35f;
+    float coolingSmokeOpacity = 0.21f;
+};
+VisualTuning gVisualTuning;
 float gInitialTimeScale = 1.0f;
 std::string gScreenshotPath;
 bool gScreenshotCaptured = false;
@@ -113,8 +123,13 @@ struct VolcanoUniformLocations {
     GLint materialShininess;
     GLint lavaTexture;
     GLint lavaTextureBlend;
+    GLint lavaEmission;
+    GLint lavaGlowWidth;
+    GLint lavaGlowIntensity;
     GLint waterNormalTexture;
     GLint waterNormalStrength;
+    GLint waterBrightness;
+    GLint waterReflection;
 };
 VolcanoUniformLocations volcanoUniforms;
 LightUniformLocations volcanoLightUniforms;
@@ -429,10 +444,20 @@ void createContext()
         volcanoShaderProgram, "uLavaTexture");
     volcanoUniforms.lavaTextureBlend = glGetUniformLocation(
         volcanoShaderProgram, "uLavaTextureBlend");
+    volcanoUniforms.lavaEmission = glGetUniformLocation(
+        volcanoShaderProgram, "uLavaEmission");
+    volcanoUniforms.lavaGlowWidth = glGetUniformLocation(
+        volcanoShaderProgram, "uLavaGlowWidth");
+    volcanoUniforms.lavaGlowIntensity = glGetUniformLocation(
+        volcanoShaderProgram, "uLavaGlowIntensity");
     volcanoUniforms.waterNormalTexture = glGetUniformLocation(
         volcanoShaderProgram, "uWaterNormalTexture");
     volcanoUniforms.waterNormalStrength = glGetUniformLocation(
         volcanoShaderProgram, "uWaterNormalStrength");
+    volcanoUniforms.waterBrightness = glGetUniformLocation(
+        volcanoShaderProgram, "uWaterBrightness");
+    volcanoUniforms.waterReflection = glGetUniformLocation(
+        volcanoShaderProgram, "uWaterReflection");
     volcanoLightUniforms = Light::findUniformLocations(volcanoShaderProgram, 0);
 
     // Depth (shadow) pass uniforms
@@ -1077,7 +1102,8 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             glm::vec3 coolAsh(0.25f, 0.265f, 0.29f);
             glm::vec3 ashTint = glm::mix(warmAsh, coolAsh, ashCooling);
             glUniform3f(particleTintLocation, ashTint.r, ashTint.g, ashTint.b);
-            glUniform1f(particleAlphaLocation, 0.28f * ashFormation * ashFade);
+            glUniform1f(particleAlphaLocation,
+                        gVisualTuning.coolingSmokeOpacity * ashFormation * ashFade);
             glUniform2f(particleShapeScaleLocation, 0.78f, 1.08f);
             glUniform1f(particlePuffinessLocation, 0.92f);
             glUniform1f(particleShearLocation, 0.0f);
@@ -1099,7 +1125,8 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             glUniform3f(particleTintLocation, 0.18f, 0.20f, 0.26f);
             // Fade in over the whole formation; each puff also grows from the center outward.
             glUniform1f(particleAlphaLocation,
-                        0.53f * cloudBuild * (1.0f - calmProgress));
+                        gVisualTuning.stormCloudOpacity * cloudBuild
+                        * (1.0f - calmProgress));
             glUniform2f(particleShapeScaleLocation, 1.07f, 1.02f);
             glUniform1f(particlePuffinessLocation, 0.95f);
             glUniform1f(particleShearLocation, 0.0f);
@@ -1163,7 +1190,7 @@ static void renderControls(double currentTime, float waterFill)
     if (gShowSettings) {
         ImGui::SetNextWindowBgAlpha(0.72f);
         ImGui::SetNextWindowPos(
-            ImVec2(std::max(18.0f, ImGui::GetIO().DisplaySize.x - 334.0f), 18.0f),
+            ImVec2(std::max(18.0f, ImGui::GetIO().DisplaySize.x - 410.0f), 18.0f),
             ImGuiCond_FirstUseEver);
         if (ImGui::Begin("Other controls", nullptr, ImGuiWindowFlags_AlwaysAutoResize) &&
             sceneDirector) {
@@ -1174,10 +1201,51 @@ static void renderControls(double currentTime, float waterFill)
 
             if (ImGui::Button("Lightning")) manualLightningRequested = true;
 
-            ImGui::SliderFloat("Lava texture",
-                               &gLavaTextureBlend, 0.0f, 0.40f, "%.2f");
-            ImGui::SliderFloat("Water normals",
-                               &gWaterNormalStrength, 0.0f, 1.0f, "%.2f");
+            ImGui::Separator();
+            ImGui::PushItemWidth(180.0f);
+            if (ImGui::CollapsingHeader("Lava", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::SliderFloat("Lava glow", &gVisualTuning.lavaEmission,
+                                   0.0f, 2.0f, "%.2fx");
+                ImGui::SliderFloat("Bank glow width", &gVisualTuning.lavaGlowWidth,
+                                   20.0f, 220.0f, "%.0f");
+                ImGui::SliderFloat("Bank glow strength", &gVisualTuning.lavaGlowIntensity,
+                                   0.0f, 2.0f, "%.2fx");
+                ImGui::SliderFloat("Lava texture", &gVisualTuning.lavaTextureBlend,
+                                   0.0f, 0.40f, "%.2f");
+            }
+            if (ImGui::CollapsingHeader("Water", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::SliderFloat("Water brightness", &gVisualTuning.waterBrightness,
+                                   0.35f, 1.80f, "%.2fx");
+                ImGui::SliderFloat("Water reflection", &gVisualTuning.waterReflection,
+                                   0.0f, 2.0f, "%.2fx");
+                ImGui::SliderFloat("Water normals", &gVisualTuning.waterNormalStrength,
+                                   0.0f, 1.0f, "%.2f");
+            }
+            if (ImGui::CollapsingHeader("Atmosphere", ImGuiTreeNodeFlags_DefaultOpen)) {
+                ImGui::SliderFloat("Storm cloud density", &gVisualTuning.stormCloudOpacity,
+                                   0.15f, 0.85f, "%.2f");
+                ImGui::SliderFloat("Cooling smoke", &gVisualTuning.coolingSmokeOpacity,
+                                   0.0f, 0.55f, "%.2f");
+            }
+            ImGui::PopItemWidth();
+            if (ImGui::Button("Copy visual settings")) {
+                std::ostringstream values;
+                values << std::fixed << std::setprecision(2)
+                       << "--lava-emission " << gVisualTuning.lavaEmission
+                       << " --lava-glow-width " << gVisualTuning.lavaGlowWidth
+                       << " --lava-glow-intensity " << gVisualTuning.lavaGlowIntensity
+                       << " --lava-texture-blend " << gVisualTuning.lavaTextureBlend
+                       << " --water-brightness " << gVisualTuning.waterBrightness
+                       << " --water-reflection " << gVisualTuning.waterReflection
+                       << " --water-normal-strength " << gVisualTuning.waterNormalStrength
+                       << " --storm-cloud-opacity " << gVisualTuning.stormCloudOpacity
+                       << " --cooling-smoke-opacity " << gVisualTuning.coolingSmokeOpacity;
+                ImGui::SetClipboardText(values.str().c_str());
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Reset visuals")) {
+                gVisualTuning = VisualTuning{};
+            }
 
             ImGui::ProgressBar(waterFill, ImVec2(-1.0f, 0.0f), "River water");
             ImGui::Separator();
@@ -1624,14 +1692,20 @@ void mainLoop()
         glActiveTexture(GL_TEXTURE2);
         glBindTexture(GL_TEXTURE_2D, lavaTexture);
         glUniform1i(volcanoUniforms.lavaTexture, 2);
-        glUniform1f(volcanoUniforms.lavaTextureBlend, gLavaTextureBlend);
+        glUniform1f(volcanoUniforms.lavaTextureBlend, gVisualTuning.lavaTextureBlend);
+        glUniform1f(volcanoUniforms.lavaEmission, gVisualTuning.lavaEmission);
+        glUniform1f(volcanoUniforms.lavaGlowWidth, gVisualTuning.lavaGlowWidth);
+        glUniform1f(volcanoUniforms.lavaGlowIntensity, gVisualTuning.lavaGlowIntensity);
 
         // Two moving samples are combined in the fragment shader. Strength zero
         // is the exact procedural-only comparison used by automated captures.
         glActiveTexture(GL_TEXTURE3);
         glBindTexture(GL_TEXTURE_2D, waterNormalTexture);
         glUniform1i(volcanoUniforms.waterNormalTexture, 3);
-        glUniform1f(volcanoUniforms.waterNormalStrength, gWaterNormalStrength);
+        glUniform1f(volcanoUniforms.waterNormalStrength,
+                    gVisualTuning.waterNormalStrength);
+        glUniform1f(volcanoUniforms.waterBrightness, gVisualTuning.waterBrightness);
+        glUniform1f(volcanoUniforms.waterReflection, gVisualTuning.waterReflection);
         mat4 lightVP = moonlight->lightVP();
         glUniformMatrix4fv(volcanoUniforms.lightViewProjection,
                            1, GL_FALSE, &lightVP[0][0]);
@@ -1907,13 +1981,36 @@ int main(int argc, char** argv)
 #if defined(ELEMENTAL_ENABLE_IMGUI)
         } else if (argument == "--show-controls") {
             gShowHud = true;
+        } else if (argument == "--show-settings") {
+            gShowSettings = true;
 #endif
         } else if (argument == "--lava-texture-blend" && i + 1 < argc) {
-            gLavaTextureBlend = glm::clamp(
+            gVisualTuning.lavaTextureBlend = glm::clamp(
                 static_cast<float>(std::atof(argv[++i])), 0.0f, 0.40f);
         } else if (argument == "--water-normal-strength" && i + 1 < argc) {
-            gWaterNormalStrength = glm::clamp(
+            gVisualTuning.waterNormalStrength = glm::clamp(
                 static_cast<float>(std::atof(argv[++i])), 0.0f, 1.0f);
+        } else if (argument == "--lava-emission" && i + 1 < argc) {
+            gVisualTuning.lavaEmission = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.0f, 2.0f);
+        } else if (argument == "--lava-glow-width" && i + 1 < argc) {
+            gVisualTuning.lavaGlowWidth = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 20.0f, 220.0f);
+        } else if (argument == "--lava-glow-intensity" && i + 1 < argc) {
+            gVisualTuning.lavaGlowIntensity = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.0f, 2.0f);
+        } else if (argument == "--water-brightness" && i + 1 < argc) {
+            gVisualTuning.waterBrightness = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.35f, 1.80f);
+        } else if (argument == "--water-reflection" && i + 1 < argc) {
+            gVisualTuning.waterReflection = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.0f, 2.0f);
+        } else if (argument == "--storm-cloud-opacity" && i + 1 < argc) {
+            gVisualTuning.stormCloudOpacity = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.15f, 0.85f);
+        } else if (argument == "--cooling-smoke-opacity" && i + 1 < argc) {
+            gVisualTuning.coolingSmokeOpacity = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.0f, 0.55f);
         } else if (argument == "--screenshot" && i + 1 < argc) {
             gScreenshotPath = argv[++i];
         } else if (argument == "--screenshot-stage" && i + 1 < argc) {
