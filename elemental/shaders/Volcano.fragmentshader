@@ -311,10 +311,10 @@ void main() {
                                     + vWorldPos.x * 0.035 + vWorldPos.z * 0.025);
 
    vec3 lavaCrust = vec3(0.18, 0.028, 0.007);
-   vec3 lavaBase = vec3(0.62, 0.075, 0.008);
-   vec3 lavaOrange = vec3(1.0, 0.28, 0.018);
-   vec3 lavaHot = vec3(1.0, 0.66, 0.10);
-   float heat = clamp(0.20 + hotVeins * 0.58 + crackCore * 0.35
+   vec3 lavaBase = vec3(0.78, 0.115, 0.007);
+   vec3 lavaOrange = vec3(1.0, 0.31, 0.014);
+   vec3 lavaHot = vec3(1.0, 0.55, 0.075);
+   float heat = clamp(0.29 + hotVeins * 0.59 + crackCore * 0.35
                       + craterPool * 0.08, 0.0, 1.0);
    vec3 finalLavaColor = mix(lavaBase, lavaOrange, heat);
    finalLavaColor = mix(finalLavaColor, lavaHot,
@@ -494,21 +494,25 @@ void main() {
    rimFactor = pow(rimFactor, 3.0);
    vec4 rimColor = light[0].Ld * 1.5 * rimFactor;
 
-   // Lava emission provides its glow without a separate bloom pass.
+   // Emission keeps the flow vivid under moonlight; nearby rock catches its warmth.
    vec3 emission = finalLavaColor * lavaMix
-                 * (0.26 + 0.18 * hotVeins + 0.12 * crackCore + 0.05 * lavaPulse);
-   // A narrow warm bounce on the banks follows the active flow and fades as it cools.
+                 * (0.46 + 0.25 * hotVeins + 0.14 * crackCore + 0.06 * lavaPulse);
+   // Warm bounce follows the active flow and fades as the surface cools.
    float riverExtent = smoothstep(u_RiverInnerRadius - 20.0,
                                   u_RiverInnerRadius + 10.0, vDist)
                      * (1.0 - smoothstep(u_RiverOuterRadius - 25.0,
                                          u_RiverOuterRadius + 5.0, vDist));
-   float bankFalloff = 1.0 - smoothstep(6.0, 65.0,
+   float bankFalloff = 1.0 - smoothstep(5.0, 105.0,
                                        max(vRiverBankDistance, 0.0));
    float activeBank = lavaActive * riverExtent
                     * smoothstep(0.10, 0.85, flowMask)
                     * (1.0 - localCooling) * (1.0 - lavaMix);
-   vec3 lavaBankLight = vec3(0.18, 0.055, 0.010)
-                      * bankFalloff * activeBank;
+   float craterFalloff = 1.0 - smoothstep(u_CraterRadius * 0.85,
+                                         u_CraterRadius * 2.0,
+                                         length(craterLocal));
+   vec3 lavaBankLight = vec3(0.36, 0.084, 0.008)
+                      * (bankFalloff * activeBank
+                         + craterFalloff * lavaActive * (1.0 - lavaMix) * 0.45);
    // Approximate sky reflection on water under low ambient light.
    vec3 waterReflection = waterColor * waterMix
                         * (0.18 + 0.20 * waterFresnel
