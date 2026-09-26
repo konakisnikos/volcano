@@ -16,11 +16,11 @@ From the repository root, regenerate the art with:
 blender --background --factory-startup --python art/stopwatch_hand/build_scene.py
 ```
 
-The application draws the hand layers behind the existing ImGui watch. The
-photo's dial acts only as a placement guide: the live dial, second hand, speed
-text, and three controls cover it. `StopwatchWidget.cpp` selects one of the
-rendered frames when a control is pressed. Keyboard `[` / `P` / `]` and mouse
-clicks trigger the same animation.
+The application draws the hand and the photographic case, crown, and pushers.
+Only the photo's fixed dial is covered by a live ImGui dial with a moving hand
+and speed text. Invisible ImGui hitboxes remain over the three photo buttons.
+`StopwatchWidget.cpp` selects one of the rendered finger frames when a control
+is pressed. Keyboard `[` / `P` / `]` and mouse clicks trigger the same animation.
 
 The `PhotoRegion` values in `StopwatchWidget.cpp` must match the `crop` values
 in `build_scene.py` if the artwork is adjusted. The transparent hand is placed

@@ -54,45 +54,10 @@ int fingerFrame(int finger)
                     static_cast<int>(age / FINGER_PRESS_SECONDS * FINGER_FRAME_COUNT));
 }
 
-float smoothStep(float value)
-{
-    value = std::max(0.0f, std::min(1.0f, value));
-    return value * value * (3.0f - 2.0f * value);
-}
-
-float fingerPressAmount(int finger)
-{
-    if (fingerPressStart[finger] < 0.0) return 0.0f;
-    const double age = ImGui::GetTime() - fingerPressStart[finger];
-    if (age < 0.0 || age >= FINGER_PRESS_SECONDS) return 0.0f;
-    if (age < 0.085) return smoothStep(static_cast<float>(age / 0.085));
-    return 1.0f - smoothStep(static_cast<float>((age - 0.085) /
-                                                  (FINGER_PRESS_SECONDS - 0.085)));
-}
-
 ImVec2 pointOnCircle(const ImVec2& center, float radius, float angle)
 {
     return ImVec2(center.x + std::cos(angle) * radius,
                   center.y + std::sin(angle) * radius);
-}
-
-ImVec2 rotatedPoint(const ImVec2& center, float x, float y, float angle)
-{
-    return ImVec2(center.x + x * std::cos(angle) - y * std::sin(angle),
-                  center.y + x * std::sin(angle) + y * std::cos(angle));
-}
-
-void drawArc(ImDrawList* draw, const ImVec2& center, float radius,
-             float startAngle, float endAngle, ImU32 color, float thickness)
-{
-    const int segments = 36;
-    ImVec2 previous = pointOnCircle(center, radius, startAngle);
-    for (int i = 1; i <= segments; ++i) {
-        const float angle = startAngle + (endAngle - startAngle) * i / segments;
-        const ImVec2 next = pointOnCircle(center, radius, angle);
-        draw->AddLine(previous, next, color, thickness);
-        previous = next;
-    }
 }
 
 void centeredText(ImDrawList* draw, const ImVec2& center, float size,
@@ -105,75 +70,15 @@ void centeredText(ImDrawList* draw, const ImVec2& center, float size,
                   color, text);
 }
 
-struct PushButton {
-    ImVec2 center;
-    bool hovered;
-    bool held;
-    bool clicked;
-};
-
-PushButton buttonHitbox(const char* id, const ImVec2& center, float scale,
-                        const char* tooltip)
+bool buttonHitbox(const char* id, const ImVec2& center, float scale,
+                  const char* tooltip)
 {
     const ImVec2 hitSize(42.0f * scale, 30.0f * scale);
     ImGui::SetCursorScreenPos(ImVec2(center.x - hitSize.x * 0.5f,
                                      center.y - hitSize.y * 0.5f));
     const bool clicked = ImGui::InvisibleButton(id, hitSize);
-    const bool hovered = ImGui::IsItemHovered();
-    if (hovered) ImGui::SetTooltip("%s", tooltip);
-    return PushButton{center, hovered, ImGui::IsItemActive(), clicked};
-}
-
-void drawPushButton(ImDrawList* draw, const PushButton& button,
-                    float scale, int symbol, bool paused, float pressAmount)
-{
-    const float halfWidth = 17.0f * scale;
-    const float halfHeight = 7.0f * scale;
-    const float pressedOffset = std::max(button.held ? 2.0f : 0.0f,
-                                         3.0f * pressAmount) * scale;
-    const ImVec2 center(button.center.x, button.center.y + pressedOffset);
-    const float angle = symbol < 0 ? -0.40f : symbol > 0 ? 0.40f : 0.0f;
-    const ImVec2 a = rotatedPoint(center, -halfWidth, -halfHeight, angle);
-    const ImVec2 b = rotatedPoint(center, halfWidth, -halfHeight, angle);
-    const ImVec2 c = rotatedPoint(center, halfWidth, halfHeight, angle);
-    const ImVec2 d = rotatedPoint(center, -halfWidth, halfHeight, angle);
-    const ImVec2 shadow(0.0f, 3.0f * scale);
-    draw->AddQuadFilled(ImVec2(a.x + shadow.x, a.y + shadow.y),
-                        ImVec2(b.x + shadow.x, b.y + shadow.y),
-                        ImVec2(c.x + shadow.x, c.y + shadow.y),
-                        ImVec2(d.x + shadow.x, d.y + shadow.y),
-                        IM_COL32(1, 3, 7, 175));
-    draw->AddQuadFilled(a, b, c, d,
-                        button.hovered ? IM_COL32(144, 168, 185, 255)
-                                       : IM_COL32(91, 110, 128, 255));
-    draw->AddQuad(a, b, c, d, IM_COL32(210, 223, 228, 230), 1.3f * scale);
-    draw->AddLine(rotatedPoint(center, -14.0f * scale, -4.5f * scale, angle),
-                  rotatedPoint(center, 14.0f * scale, -4.5f * scale, angle),
-                  IM_COL32(231, 239, 241, 215), 1.6f * scale);
-    draw->AddLine(rotatedPoint(center, -14.0f * scale, 4.0f * scale, angle),
-                  rotatedPoint(center, 14.0f * scale, 4.0f * scale, angle),
-                  IM_COL32(28, 40, 53, 215), 1.5f * scale);
-
-    const ImU32 ink = IM_COL32(238, 243, 239, 245);
-    if (symbol < 0 || symbol > 0) {
-        draw->AddLine(rotatedPoint(center, -4.5f * scale, 0.0f, angle),
-                      rotatedPoint(center, 4.5f * scale, 0.0f, angle),
-                      ink, 1.6f * scale);
-        if (symbol > 0) {
-            draw->AddLine(rotatedPoint(center, 0.0f, -4.5f * scale, angle),
-                          rotatedPoint(center, 0.0f, 4.5f * scale, angle),
-                          ink, 1.6f * scale);
-        }
-    } else if (paused) {
-        draw->AddTriangleFilled(ImVec2(center.x - 3.0f * scale, center.y - 5.0f * scale),
-                                ImVec2(center.x - 3.0f * scale, center.y + 5.0f * scale),
-                                ImVec2(center.x + 5.0f * scale, center.y), ink);
-    } else {
-        draw->AddRectFilled(ImVec2(center.x - 4.5f * scale, center.y - 5.0f * scale),
-                            ImVec2(center.x - 1.5f * scale, center.y + 5.0f * scale), ink);
-        draw->AddRectFilled(ImVec2(center.x + 1.5f * scale, center.y - 5.0f * scale),
-                            ImVec2(center.x + 4.5f * scale, center.y + 5.0f * scale), ink);
-    }
+    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", tooltip);
+    return clicked;
 }
 
 } // namespace
@@ -239,7 +144,6 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
                             origin.y + 100.0f * scale);
     const ImVec2 center(faceOrigin.x + 140.0f * scale,
                         faceOrigin.y + 185.0f * scale);
-    const float radius = 111.0f * scale;
 
     drawPhotoRegion(draw, handBack, PhotoRegion{0.0f, 0.0f, 1082.0f, 1454.0f},
                     center, scale);
@@ -248,63 +152,18 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
                         fingerRegions[finger], center, scale);
     }
 
-    const PushButton slower = buttonHitbox(
+    const bool slower = buttonHitbox(
         "##slower", ImVec2(center.x - 82.0f * scale, faceOrigin.y + 55.0f * scale),
         scale, "Halve simulation speed ([)");
-    const PushButton pause = buttonHitbox(
+    const bool pause = buttonHitbox(
         "##pause", ImVec2(center.x, faceOrigin.y + 31.0f * scale),
         scale, paused ? "Resume simulation (P)" : "Pause simulation (P)");
-    const PushButton faster = buttonHitbox(
+    const bool faster = buttonHitbox(
         "##faster", ImVec2(center.x + 75.0f * scale, faceOrigin.y + 55.0f * scale),
         scale, "Double simulation speed (])");
 
-    // The pushers emerge from behind the upper edge of the case.
-    const PushButton buttons[3] = {slower, pause, faster};
-    for (int i = 0; i < 3; ++i) {
-        const float side = i == 0 ? -1.0f : i == 2 ? 1.0f : 0.0f;
-        const ImVec2 stemBase(center.x + side * 67.0f * scale,
-                              center.y - (side == 0.0f ? 116.0f : 94.0f) * scale);
-        const ImVec2 stemTop(buttons[i].center.x,
-                             buttons[i].center.y + 7.0f * scale);
-        draw->AddLine(stemBase, stemTop, IM_COL32(7, 13, 21, 255), 13.0f * scale);
-        draw->AddLine(stemBase, stemTop, IM_COL32(54, 76, 96, 255), 8.0f * scale);
-        draw->AddLine(ImVec2(stemBase.x - 2.0f * scale, stemBase.y),
-                      ImVec2(stemTop.x - 2.0f * scale, stemTop.y),
-                      IM_COL32(160, 185, 202, 205), 1.8f * scale);
-    }
-
-    const ImVec2 crownMin(center.x + 108.0f * scale, center.y - 47.0f * scale);
-    const ImVec2 crownMax(center.x + 132.0f * scale, center.y - 31.0f * scale);
-    draw->AddRectFilled(crownMin, crownMax, IM_COL32(13, 21, 31, 255), 3.0f * scale);
-    draw->AddRect(ImVec2(crownMin.x + 9.0f * scale, crownMin.y), crownMax,
-                  IM_COL32(156, 175, 187, 220), 3.0f * scale, 0, 1.2f * scale);
-    for (int groove = 0; groove < 4; ++groove) {
-        const float x = crownMin.x + (13.0f + groove * 4.0f) * scale;
-        draw->AddLine(ImVec2(x, crownMin.y + 3.0f * scale),
-                      ImVec2(x, crownMax.y - 3.0f * scale),
-                      IM_COL32(80, 103, 119, 195), 1.0f * scale);
-    }
-
-    draw->AddCircleFilled(ImVec2(center.x + 5.0f * scale, center.y + 7.0f * scale),
-                          radius + 10.0f * scale, IM_COL32(0, 0, 0, 105), 128);
-    draw->AddCircleFilled(center, radius + 9.0f * scale,
-                          IM_COL32(9, 14, 22, 255), 128);
-    draw->AddCircleFilled(center, radius + 6.5f * scale,
-                          IM_COL32(75, 103, 125, 255), 128);
-    draw->AddCircleFilled(center, radius + 3.0f * scale,
-                          IM_COL32(24, 37, 50, 255), 128);
-    draw->AddCircleFilled(center, radius - 0.5f * scale,
-                          IM_COL32(177, 195, 205, 255), 128);
-    draw->AddCircleFilled(center, radius - 2.0f * scale,
-                          IM_COL32(19, 28, 39, 255), 128);
-    draw->AddCircleFilled(center, radius - 5.0f * scale,
-                          IM_COL32(5, 8, 13, 255), 128);
-    drawArc(draw, center, radius + 7.0f * scale, 3.55f, 5.55f,
-            IM_COL32(224, 236, 241, 220), 2.1f * scale);
-    drawArc(draw, center, radius + 5.0f * scale, 0.20f, 1.65f,
-            IM_COL32(80, 134, 171, 190), 1.8f * scale);
-    drawArc(draw, center, radius - 2.0f * scale, 3.50f, 5.45f,
-            IM_COL32(223, 232, 237, 180), 1.0f * scale);
+    // Replace only the photo's fixed 60-second face. Its case and pushers stay visible.
+    draw->AddCircleFilled(center, 104.0f * scale, IM_COL32(5, 8, 13, 255), 128);
 
     for (int tick = 0; tick < 120; ++tick) {
         const float angle = -PI * 0.5f + tick * 2.0f * PI / 120.0f;
@@ -383,17 +242,10 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
                      10.0f * scale, IM_COL32(246, 148, 80, 255), "PAUSED");
     }
 
-    const float leftPress = fingerPressAmount(0);
-    const float middlePress = fingerPressAmount(1);
-    const float rightPress = fingerPressAmount(2);
-    drawPushButton(draw, slower, scale, -1, paused, leftPress);
-    drawPushButton(draw, pause, scale, 0, paused, middlePress);
-    drawPushButton(draw, faster, scale, 1, paused, rightPress);
-
     ImGui::End();
 
-    if (slower.clicked) return StopwatchAction::Slower;
-    if (pause.clicked) return StopwatchAction::TogglePause;
-    if (faster.clicked) return StopwatchAction::Faster;
+    if (slower) return StopwatchAction::Slower;
+    if (pause) return StopwatchAction::TogglePause;
+    if (faster) return StopwatchAction::Faster;
     return StopwatchAction::None;
 }

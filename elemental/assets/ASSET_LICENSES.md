@@ -12,4 +12,4 @@
 - Based on the hand and stopwatch image supplied by the project owner.
 - The transparent cutout was made with the built-in image generation tool.
 - The PNG layers and finger frames were rendered from `art/stopwatch_hand/stopwatch_hand.blend`.
-- The live stopwatch face, hands, speed text, and button actions are drawn by the application.
+- The application draws a live face inside the photographic case and uses invisible hitboxes over its buttons.
