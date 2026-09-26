@@ -1070,7 +1070,7 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
         if (cloudEmitter) {
             glUniform3f(particleTintLocation, 0.25f, 0.27f, 0.33f);
             glUniform1f(particleAlphaLocation,
-                        0.42f * (1.0f - calmProgress));
+                        0.46f * (1.0f - calmProgress));
             glUniform2f(particleShapeScaleLocation, 1.28f, 0.68f);
             glUniform1f(particlePuffinessLocation, 0.95f);
             glUniform1f(particleShearLocation, 0.0f);
