@@ -186,12 +186,53 @@ Instanced σχεδίαση για πολλά σωματίδια και στοι�
 
 [ΝΑ ΣΥΜΠΛΗΡΩΘΕΙ ΜΕΤΑ ΤΟΥΣ ΕΛΕΓΧΟΥΣ: ποια από τα επτά ζητούμενα καλύφθηκαν, τι έδειξε η τελική εκτέλεση, σημαντικότερες σχεδιαστικές επιλογές, πραγματικοί περιορισμοί και πιθανές επόμενες βελτιώσεις.]
 
-## 12. Πηγές και προέλευση πόρων
+## 12. Πηγές, βιβλιογραφία και προέλευση πόρων
 
-1. [Εκφώνηση «4. Elemental»](elemental_assignment.md).
-2. Patricio Gonzalez Vivo και Jen Lowe, *The Book of Shaders*: [Shapes](https://thebookofshaders.com/07/), [Noise](https://thebookofshaders.com/11/), [Fractal Brownian Motion](https://thebookofshaders.com/13/). Εξετάστηκαν για την τεχνική τεκμηρίωση των ομαλών μασκών και του πολυκλιμακωτού value noise στο ηλεκτρισμένο νερό (§8.2).
-3. [ΝΑ ΣΥΜΠΛΗΡΩΘΟΥΝ: εργαστηριακές σημειώσεις, επίσημη τεκμηρίωση και άλλες πηγές που πράγματι χρησιμοποιήθηκαν, με αναφορά στο σημείο της εργασίας που επηρέασαν.]
-4. [ΝΑ ΕΛΕΓΧΘΕΙ: προέλευση και δικαιώματα των εικόνων/υφών. Τα ήδη καταγεγραμμένα στοιχεία βρίσκονται στο `elemental/assets/ASSET_LICENSES.md`.]
+Στην ενότητα αυτή καταγράφονται οι πηγές που χρησιμοποιήθηκαν για την κατανόηση ή την τεκμηρίωση των τεχνικών της εφαρμογής. Για κάθε πηγή διευκρινίζεται ποιο μέρος της εργασίας υποστήριξε και πώς η τελική λύση προσαρμόστηκε στις ανάγκες της σκηνής.
+
+### 12.1 Υλικό του μαθήματος
+
+1. [Εκφώνηση της εργασίας «4. Elemental»](elemental_assignment.md). Καθόρισε τα επτά ζητούμενα και την ακολουθία των στοιχειακών μετασχηματισμών.
+
+2. Σημειώσεις και παραδείγματα των εργαστηριακών ασκήσεων του μαθήματος για υφές και ανάμειξη χρωμάτων, Phong φωτισμό, shadow mapping, κίνηση με βάση το `dt` και particle systems. Οι τεχνικές αυτές αποτέλεσαν την κύρια βάση της υλοποίησης. **[ΝΑ ΣΥΜΠΛΗΡΩΘΟΥΝ: ακριβείς τίτλοι ή αριθμοί των διαλέξεων/εργαστηρίων όταν ληφθούν τα αρχεία του μαθήματος.]**
+
+### 12.2 Τεχνική βιβλιογραφία και διαδικτυακές πηγές
+
+1. Bui Tuong Phong, «[Illumination for Computer Generated Pictures](https://doi.org/10.1145/360825.360839)», *Communications of the ACM*, τόμ. 18, τχ. 6, σελ. 311–317, 1975. Αποτελεί τη θεωρητική αναφορά για το μοντέλο τοπικού φωτισμού με ambient, diffuse και specular συνιστώσα που χρησιμοποιείται στη σκηνή.
+
+2. Lance Williams, «[Casting Curved Shadows on Curved Surfaces](https://doi.org/10.1145/800248.807402)», *Proceedings of SIGGRAPH '78*, σελ. 270–274, 1978. Χρησιμοποιήθηκε ως η αρχική βιβλιογραφική αναφορά της τεχνικής shadow mapping. Για τα πρακτικά βήματα του depth pass, το bias και το PCF συμβουλευτήκαμε επίσης το κεφάλαιο «[Shadow Mapping](https://learnopengl.com/Advanced-Lighting/Shadows/Shadow-Mapping)» του LearnOpenGL.
+
+3. William T. Reeves, «[Particle Systems—A Technique for Modeling a Class of Fuzzy Objects](https://doi.org/10.1145/357318.357320)», *ACM Transactions on Graphics*, τόμ. 2, τχ. 2, σελ. 91–108, 1983. Η βασική λογική δημιουργίας, ενημέρωσης, μεταβολής και λήξης σωματιδίων συνδέεται με τους εκπομπούς καπνού, στάχτης, σύννεφων και βροχής της εφαρμογής.
+
+4. Patricio Gonzalez Vivo και Jen Lowe, *The Book of Shaders*: «[Shapes](https://thebookofshaders.com/07/)», «[Noise](https://thebookofshaders.com/11/)» και «[Fractal Brownian Motion](https://thebookofshaders.com/13/)». Οι ενότητες αυτές χρησιμοποιήθηκαν για ομαλές μάσκες με `smoothstep`, ακανόνιστα διαδικαστικά σχήματα, value noise και πολυκλιμακωτό FBM. Οι τεχνικές εμφανίζονται στη λάβα, στα σημάδια καύσης και στο ηλεκτρισμένο νερό.
+
+5. Joey de Vries, «[Bloom](https://learnopengl.com/Advanced-Lighting/Bloom)», *LearnOpenGL*. Η πηγή εξετάστηκε για το ξεχωριστό framebuffer φωτεινών περιοχών, το διαχωρίσιμο Gaussian blur σε οριζόντιο και κατακόρυφο πέρασμα και την προσθετική σύνθεση του αποτελέσματος. Στη δική μας εφαρμογή το bloom περιορίζεται στον κεραυνό αντί να εφαρμόζεται σε ολόκληρη τη σκηνή.
+
+6. Paul Kruszewski, «[A Probabilistic Technique for the Synthetic Imagery of Lightning](https://doi.org/10.1016/S0097-8493(99)00038-2)», *Computers & Graphics*, τόμ. 23, τχ. 2, σελ. 287–293, 1999. Η εργασία χρησιμοποιήθηκε ως αναφορά για τη διαδικαστική, διακλαδωμένη μορφή και τη σταδιακή εμφάνιση ενός κεραυνού. Η εφαρμογή χρησιμοποιεί απλούστερη παραμετρική διαδρομή με πλευρικές μετατοπίσεις και μικρές δευτερεύουσες διακλαδώσεις.
+
+7. *OpenGL Tutorial*, «[Tutorial 18: Billboards & Particles](https://www.opengl-tutorial.org/intermediate-tutorials/billboards-particles/)». Χρησιμοποιήθηκε ως πρακτική αναφορά για camera-facing billboards, particle rendering και instanced σχεδίαση. Τα billboards χρησιμοποιούνται στα σωματίδια και στα δέντρα, ενώ η instanced σχεδίαση χρησιμοποιείται στις παρτίδες σωματιδίων και σε στοιχεία της βλάστησης.
+
+8. Khronos Group, *OpenGL Wiki*: «[Blending](https://wikis.khronos.org/opengl/Blending)», «[Transparency Sorting](https://wikis.khronos.org/opengl/Transparency_Sorting)» και «[Instancing](https://wikis.khronos.org/opengl/Instancing)». Οι σελίδες χρησιμοποιήθηκαν για την τεκμηρίωση της alpha blending, της σειράς σχεδίασης των ημιδιαφανών αντικειμένων και της απόδοσης πολλών αντιγράφων γεωμετρίας με μία κλήση σχεδίασης.
+
+9. Mark Finch, «[Effective Water Simulation from Physical Models](https://developer.nvidia.com/gpugems/gpugems/part-i-natural-effects/chapter-1-effective-water-simulation-physical-models)», στο *GPU Gems*, κεφ. 1, NVIDIA, 2004. Η συζήτηση για κινούμενες λεπτομέρειες κανονικών στην επιφάνεια του νερού αποτέλεσε αναφορά για τον συνδυασμό δύο μετακινούμενων δειγμάτων του `water_normal.png`.
+
+10. *OpenGL Tutorial*, «[Tutorial 9: VBO Indexing](https://www.opengl-tutorial.org/intermediate-tutorials/tutorial-9-vbo-indexing/)». Η απαίτηση να παραμένουν ευθυγραμμισμένα όλα τα γνωρίσματα μιας κορυφής βοήθησε στην ερμηνεία του προβλήματος της §3.4, όπου η συγχώνευση κοινών κορυφών αποσυντόνιζε τις πρόσθετες μάσκες της κοίτης.
+
+### 12.3 Προέλευση οπτικών πόρων και άδειες
+
+| Πόρος της τελικής εφαρμογής | Προέλευση και επεξεργασία | Άδεια ή κατάσταση |
+| --- | --- | --- |
+| `heightmap_8bit.png`, `Diffusemap.png` | Επεξεργασμένες εκδόσεις του πακέτου [*Dark Alien Landscape Height Map*](https://www.motionforgepictures.com/sdm_downloads/dark-alien-landscape-height-map/) του Chris J. Mitchell, Motion Forge Pictures. Το αρχικό πακέτο περιλαμβάνει height, diffuse και bump map 2048 × 2048· η εφαρμογή χρησιμοποιεί επεξεργασμένες εικόνες 1536 × 1536 για το ύψος και το χρώμα του terrain. | Royalty-free, μη αποκλειστική άδεια για εμπορικά και μη εμπορικά έργα. Η απαιτούμενη αναφορά είναι: **“Models or Textures Supplied by Motion Forge Pictures”.** |
+| `skybox_blue/{right,left,top,bottom,front,back}.png` | Οι έξι πλευρές δημιουργήθηκαν διαδικαστικά στο [*Space 3D*](https://wwwtyro.github.io/space-3d/) του wwwtyro, με επιλογή seed, χρωμάτων, νεφελωμάτων και πυκνότητας αστεριών. Το `skybox_blue` είναι το cubemap που χρησιμοποιείται στην τελική έκδοση· οι υπόλοιποι φάκελοι skybox είναι παλαιότερες εναλλακτικές. | Παραγόμενο υλικό του project. Ο κώδικας του εργαλείου [διατίθεται με Unlicense](https://github.com/wwwtyro/space-3d/blob/master/LICENSE). |
+| `water_normal.png` | Προέρχεται από το [*Wave Normal Map*](https://proctexture.com/textures/water/normal-maps/wave-normal-map) του ProcTexture. Χρησιμοποιήθηκε το `normal.png` από το πακέτο 1K PBR. | [CC0](https://proctexture.com/about/): επιτρέπονται ελεύθερα χρήση, τροποποίηση και διανομή. |
+| `ambient_cloud_bank.png` | Δημιουργήθηκε ειδικά για το project με το εργαλείο παραγωγής εικόνων του Codex και επεξεργάστηκε ως διαφανής, πλατιά ζώνη αρχικών σύννεφων. | Παραγόμενο υλικό του project, χωρίς εξωτερική stock εικόνα. |
+| `stopwatch_hand_frames/*.png` | Η αρχική εικόνα χεριού και χρονόμετρου δημιουργήθηκε με ChatGPT Image Generation. Μετά την αφαίρεση του φόντου, οργανώθηκε σε στρώσεις και σε 2.5D σκηνή Blender. Από το αρχείο `art/stopwatch_hand/stopwatch_hand.blend` εξήχθησαν το στατικό πίσω επίπεδο και εννέα καρέ για την κίνηση κάθε δαχτύλου. | Παραγόμενο υλικό του project. |
+| `lava_overlay.png` | Τετράγωνη, μικρότερη εκδοχή του `lava.png`, ώστε να επαναλαμβάνεται πάνω στη διαδικαστική λάβα. | **[ΕΚΚΡΕΜΕΙ: αρχική πηγή και άδεια του `lava.png`. Αν δεν εντοπιστούν, το texture πρέπει να αντικατασταθεί από πόρο με σαφή άδεια ή από νέα εικόνα του project.]** |
+| `tree_billboard.png`, `almond_tree_billboard.png` | Διαφανείς εικόνες δύο ειδών δέντρων, οι οποίες σχεδιάζονται ως camera-facing billboards. | **[ΕΚΚΡΕΜΕΙ: αρχική πηγή/δημιουργός και άδεια ή επιβεβαίωση ότι δημιουργήθηκαν ειδικά για το project.]** |
+
+Η γεωμετρία του ηφαιστείου και της κοίτης, η λάβα, το γρασίδι και τα λουλούδια, τα σχήματα των σωματιδίων, το σύννεφο καταιγίδας, η βροχή, οι κεραυνοί, τα σημάδια καύσης και ο ηλεκτρισμός του ποταμού παράγονται από τον κώδικα και τους shaders της εφαρμογής. Δεν χρησιμοποιούνται εξωτερικά τρισδιάστατα μοντέλα για αυτά τα στοιχεία.
+
+Τα `smoke.png` και `smoke2.png` υπάρχουν στον φάκελο των assets αλλά δεν φορτώνονται στην τελική εφαρμογή. Το `smoke3.png` φορτώνεται ακόμη από τον κώδικα, όμως ο τελικός particle shader δημιουργεί διαδικαστικά το σχήμα των σωματιδίων και δεν δειγματοληπτεί την εικόνα. Συνεπώς κανένα από τα τρία αρχεία δεν συμβάλλει στο ορατό αποτέλεσμα. Πριν από την υποβολή πρέπει είτε να αφαιρεθούν από το παραδοτέο μαζί με την περιττή φόρτωση του `smoke3.png` είτε να καταγραφεί η προέλευση και η άδειά τους.
 
 ## Παράρτημα Α — Αντιστοίχιση ζητουμένων
 
