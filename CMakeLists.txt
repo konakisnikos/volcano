@@ -128,6 +128,9 @@ set(SHADERS
   elemental/shaders/Skybox.fragmentshader
   elemental/shaders/ParticleShader.vertexshader
   elemental/shaders/ParticleShader.fragmentshader
+  elemental/shaders/LightningFullscreen.vertexshader
+  elemental/shaders/LightningBlur.fragmentshader
+  elemental/shaders/LightningComposite.fragmentshader
   elemental/shaders/Depth.vertexshader
   elemental/shaders/Depth.fragmentshader
   elemental/shaders/Prop.vertexshader

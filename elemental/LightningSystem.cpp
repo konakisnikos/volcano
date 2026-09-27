@@ -1,11 +1,18 @@
 #include "LightningSystem.h"
 #include <common/shader.h>
 #include <glm/gtc/matrix_transform.hpp>
+#include <algorithm>
 #include <cmath>
+#include <iostream>
 
 LightningSystem::LightningSystem()
     : m_vao(0), m_vbo(0), m_shader(0), m_vLoc(-1), m_pLoc(-1),
-      m_colorLoc(-1), m_active(false), m_impactPending(false),
+      m_colorLoc(-1), m_bloomFbos{0, 0, 0}, m_bloomTextures{0, 0, 0},
+      m_fullscreenVao(0), m_blurShader(0), m_compositeShader(0),
+      m_blurSourceLoc(-1), m_blurDirectionLoc(-1),
+      m_compositeSourceLoc(-1), m_compositeStrengthLoc(-1),
+      m_bloomWidth(0), m_bloomHeight(0), m_bloomReady(false),
+      m_active(false), m_impactPending(false),
       m_impactCreated(false), m_strikeStartTime(0.0f), m_visualAge(0.0f),
       m_flashStrength(0.0f),
       m_cloudPosition(0.0f), m_strikePosition(0.0f) {
@@ -15,14 +22,55 @@ LightningSystem::LightningSystem()
     m_pLoc = glGetUniformLocation(m_shader, "P");
     m_colorLoc = glGetUniformLocation(m_shader, "uColor");
 
+    m_blurShader = loadShaders(ELEMENTAL_SHADER_DIR "/LightningFullscreen.vertexshader",
+                               ELEMENTAL_SHADER_DIR "/LightningBlur.fragmentshader");
+    m_compositeShader = loadShaders(ELEMENTAL_SHADER_DIR "/LightningFullscreen.vertexshader",
+                                    ELEMENTAL_SHADER_DIR "/LightningComposite.fragmentshader");
+    m_blurSourceLoc = glGetUniformLocation(m_blurShader, "uSource");
+    m_blurDirectionLoc = glGetUniformLocation(m_blurShader, "uDirection");
+    m_compositeSourceLoc = glGetUniformLocation(m_compositeShader, "uSource");
+    m_compositeStrengthLoc = glGetUniformLocation(m_compositeShader, "uStrength");
+
     glGenVertexArrays(1, &m_vao);
     glGenBuffers(1, &m_vbo);
+    glGenFramebuffers(3, m_bloomFbos);
+    glGenTextures(3, m_bloomTextures);
+    glGenVertexArrays(1, &m_fullscreenVao);
 }
 
 LightningSystem::~LightningSystem() {
+    if (m_fullscreenVao) glDeleteVertexArrays(1, &m_fullscreenVao);
+    glDeleteTextures(3, m_bloomTextures);
+    glDeleteFramebuffers(3, m_bloomFbos);
+    if (m_compositeShader) glDeleteProgram(m_compositeShader);
+    if (m_blurShader) glDeleteProgram(m_blurShader);
     if (m_vbo) glDeleteBuffers(1, &m_vbo);
     if (m_vao) glDeleteVertexArrays(1, &m_vao);
     if (m_shader) glDeleteProgram(m_shader);
+}
+
+void LightningSystem::resizeBloom(int width, int height) {
+    if (width == m_bloomWidth && height == m_bloomHeight) return;
+    m_bloomWidth = width;
+    m_bloomHeight = height;
+    m_bloomReady = true;
+
+    for (int i = 0; i < 3; ++i) {
+        glBindTexture(GL_TEXTURE_2D, m_bloomTextures[i]);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, width, height, 0,
+                     GL_RGBA, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_bloomFbos[i]);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                               GL_TEXTURE_2D, m_bloomTextures[i], 0);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            m_bloomReady = false;
+        }
+    }
+    if (!m_bloomReady) std::cerr << "Lightning bloom framebuffer unavailable\n";
 }
 
 void LightningSystem::trigger(float simulationTime, const glm::vec3& cloudPosition,
@@ -155,14 +203,27 @@ void LightningSystem::update(float simulationTime, float simulationDelta) {
     (void)simulationTime;
 }
 
-void LightningSystem::draw(const glm::mat4& view, const glm::mat4& projection) {
+void LightningSystem::draw(const glm::mat4& view, const glm::mat4& projection,
+                           float bloomStrength) {
     if (m_vertices.empty()) return;
+
+    GLint previousFramebuffer = 0;
+    GLint previousViewport[4] = {0, 0, 0, 0};
+    GLint previousActiveTexture = GL_TEXTURE0;
+    GLint previousTexture0 = 0;
+    const GLboolean depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean depthWriteEnabled = GL_TRUE;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+    glGetIntegerv(GL_VIEWPORT, previousViewport);
+    glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+    glGetBooleanv(GL_DEPTH_WRITEMASK, &depthWriteEnabled);
+    glActiveTexture(GL_TEXTURE0);
+    glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture0);
+
     glUseProgram(m_shader);
     glUniformMatrix4fv(m_vLoc, 1, GL_FALSE, &view[0][0]);
     glUniformMatrix4fv(m_pLoc, 1, GL_FALSE, &projection[0][0]);
     const glm::vec3 cameraPosition = glm::vec3(glm::inverse(view)[3]);
-
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
     // Build camera-facing ribbons instead of relying on glLineWidth, which is
     // commonly clamped to one pixel on core-profile/macOS OpenGL drivers.
@@ -200,11 +261,64 @@ void LightningSystem::draw(const glm::mat4& view, const glm::mat4& projection) {
                      static_cast<GLsizei>(ribbonVertices.size()));
     };
 
-    // Wide translucent pass approximates bloom without a post-processing stage.
+    if (bloomStrength > 0.0f && previousViewport[2] > 0 && previousViewport[3] > 0) {
+        const int width = std::max(1, previousViewport[2] / 4);
+        const int height = std::max(1, previousViewport[3] / 4);
+        resizeBloom(width, height);
+        if (m_bloomReady) {
+            glViewport(0, 0, width, height);
+            glBindFramebuffer(GL_FRAMEBUFFER, m_bloomFbos[0]);
+            const GLfloat black[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+            glClearBufferfv(GL_COLOR, 0, black);
+            glDisable(GL_DEPTH_TEST);
+            glDepthMask(GL_FALSE);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+            drawRibbon(3.2f, glm::vec4(0.38f, 0.62f, 1.0f, 0.85f));
+
+            glDisable(GL_BLEND);
+            glBindVertexArray(m_fullscreenVao);
+            glUseProgram(m_blurShader);
+            glUniform1i(m_blurSourceLoc, 0);
+            for (int pass = 0; pass < 4; ++pass) {
+                const int destination = 1 + pass % 2;
+                const int source = pass == 0 ? 0 : 1 + (pass - 1) % 2;
+                glBindFramebuffer(GL_FRAMEBUFFER, m_bloomFbos[destination]);
+                glBindTexture(GL_TEXTURE_2D, m_bloomTextures[source]);
+                glUniform2f(m_blurDirectionLoc,
+                            pass % 2 == 0 ? 1.0f / width : 0.0f,
+                            pass % 2 == 1 ? 1.0f / height : 0.0f);
+                glDrawArrays(GL_TRIANGLES, 0, 3);
+            }
+
+            glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+            glViewport(previousViewport[0], previousViewport[1],
+                       previousViewport[2], previousViewport[3]);
+            glUseProgram(m_compositeShader);
+            glUniform1i(m_compositeSourceLoc, 0);
+            glUniform1f(m_compositeStrengthLoc, bloomStrength);
+            glBindTexture(GL_TEXTURE_2D, m_bloomTextures[2]);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_ONE, GL_ONE);
+            glDrawArrays(GL_TRIANGLES, 0, 3);
+        }
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+    glViewport(previousViewport[0], previousViewport[1],
+               previousViewport[2], previousViewport[3]);
+    if (depthTestEnabled) glEnable(GL_DEPTH_TEST);
+    else glDisable(GL_DEPTH_TEST);
+    glDepthMask(depthWriteEnabled);
+    glUseProgram(m_shader);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    // The wide ribbon remains beneath the sharp core when bloom is disabled.
     drawRibbon(2.25f, glm::vec4(0.18f, 0.38f, 1.0f, 0.22f));
     // Thin near-white core keeps the jagged path crisp over clouds and terrain.
     drawRibbon(0.42f, glm::vec4(0.82f, 0.93f, 1.0f, 0.98f));
 
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glBindVertexArray(0);
+    glBindTexture(GL_TEXTURE_2D, previousTexture0);
+    glActiveTexture(previousActiveTexture);
 }

@@ -1,0 +1,18 @@
+#version 330 core
+
+in vec2 vUV;
+out vec4 fragment_color;
+
+uniform sampler2D uSource;
+uniform vec2 uDirection;
+
+void main() {
+    float weights[5] = float[5](0.227027, 0.1945946, 0.1216216,
+                                0.054054, 0.016216);
+    vec3 color = texture(uSource, vUV).rgb * weights[0];
+    for (int i = 1; i < 5; ++i) {
+        color += texture(uSource, vUV + uDirection * float(i)).rgb * weights[i];
+        color += texture(uSource, vUV - uDirection * float(i)).rgb * weights[i];
+    }
+    fragment_color = vec4(color, 1.0);
+}

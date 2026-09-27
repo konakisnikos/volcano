@@ -69,6 +69,7 @@ struct VisualTuning {
     float waterNormalStrength = 1.0f;
     float stormCloudOpacity = 0.35f;
     float coolingSmokeOpacity = 0.21f;
+    float lightningBloom = 1.0f;
 };
 VisualTuning gVisualTuning;
 float gInitialTimeScale = 1.0f;
@@ -1131,7 +1132,8 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
         }
         // Keep the cloud in front of the bolt, but leave the rising smoke behind it.
         if (lightningSystem && lightningSystem->isActive()) {
-            lightningSystem->draw(viewMatrix, projectionMatrix);
+            lightningSystem->draw(viewMatrix, projectionMatrix,
+                                  gVisualTuning.lightningBloom);
             glUseProgram(particleShaderProgram);
         }
         if (cloudEmitter) {
@@ -1185,7 +1187,8 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
     }
     if (!hasWeather && lightningSystem && lightningSystem->isActive()) {
         glDepthMask(GL_FALSE);
-        lightningSystem->draw(viewMatrix, projectionMatrix);
+        lightningSystem->draw(viewMatrix, projectionMatrix,
+                              gVisualTuning.lightningBloom);
         glDepthMask(GL_TRUE);
     }
 }
@@ -1245,6 +1248,8 @@ static void renderControls(double currentTime, float waterFill)
                                    0.15f, 0.85f, "%.2f");
                 ImGui::SliderFloat("Cooling smoke", &gVisualTuning.coolingSmokeOpacity,
                                    0.0f, 0.55f, "%.2f");
+                ImGui::SliderFloat("Lightning bloom", &gVisualTuning.lightningBloom,
+                                   0.0f, 1.20f, "%.2f");
             }
             ImGui::PopItemWidth();
             if (ImGui::Button("Copy visual settings")) {
@@ -1258,7 +1263,8 @@ static void renderControls(double currentTime, float waterFill)
                        << " --water-reflection " << gVisualTuning.waterReflection
                        << " --water-normal-strength " << gVisualTuning.waterNormalStrength
                        << " --storm-cloud-opacity " << gVisualTuning.stormCloudOpacity
-                       << " --cooling-smoke-opacity " << gVisualTuning.coolingSmokeOpacity;
+                       << " --cooling-smoke-opacity " << gVisualTuning.coolingSmokeOpacity
+                       << " --lightning-bloom " << gVisualTuning.lightningBloom;
                 ImGui::SetClipboardText(values.str().c_str());
             }
             ImGui::SameLine();
@@ -2043,6 +2049,9 @@ int main(int argc, char** argv)
         } else if (argument == "--cooling-smoke-opacity" && i + 1 < argc) {
             gVisualTuning.coolingSmokeOpacity = glm::clamp(
                 static_cast<float>(std::atof(argv[++i])), 0.0f, 0.55f);
+        } else if (argument == "--lightning-bloom" && i + 1 < argc) {
+            gVisualTuning.lightningBloom = glm::clamp(
+                static_cast<float>(std::atof(argv[++i])), 0.0f, 1.20f);
         } else if (argument == "--screenshot" && i + 1 < argc) {
             gScreenshotPath = argv[++i];
         } else if (argument == "--screenshot-stage" && i + 1 < argc) {

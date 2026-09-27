@@ -13,7 +13,8 @@ public:
                  const glm::vec3& strikePosition);
     void update(float simulationTime, float simulationDelta);
     void reset();
-    void draw(const glm::mat4& view, const glm::mat4& projection);
+    void draw(const glm::mat4& view, const glm::mat4& projection,
+              float bloomStrength);
     bool consumeImpact();
     bool isActive() const { return m_active; }
     float flashStrength() const { return m_flashStrength; }
@@ -26,6 +27,7 @@ private:
     };
 
     void buildBoltGeometry();
+    void resizeBloom(int width, int height);
 
     GLuint m_vao;
     GLuint m_vbo;
@@ -33,6 +35,18 @@ private:
     GLint m_vLoc;
     GLint m_pLoc;
     GLint m_colorLoc;
+    GLuint m_bloomFbos[3];
+    GLuint m_bloomTextures[3];
+    GLuint m_fullscreenVao;
+    GLuint m_blurShader;
+    GLuint m_compositeShader;
+    GLint m_blurSourceLoc;
+    GLint m_blurDirectionLoc;
+    GLint m_compositeSourceLoc;
+    GLint m_compositeStrengthLoc;
+    int m_bloomWidth;
+    int m_bloomHeight;
+    bool m_bloomReady;
     bool m_active;
     bool m_impactPending;
     bool m_impactCreated;
