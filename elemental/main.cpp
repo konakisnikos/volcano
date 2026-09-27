@@ -1170,7 +1170,7 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
             float rainBuild = glm::smoothstep(0.0f, 1.6f, rainAge);
             glUniform3f(particleTintLocation, 0.58f, 0.72f, 0.90f);
             glUniform1f(particleAlphaLocation, 0.82f * rainBuild * rainFade);
-            glUniform2f(particleShapeScaleLocation, 0.17f, 6.2f);
+            glUniform2f(particleShapeScaleLocation, 0.22f, 7.0f);
             glUniform1f(particlePuffinessLocation, 0.0f);
             glUniform1f(particleShearLocation, 0.16f);
             rainEmitter->renderParticles();
