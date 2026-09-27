@@ -1,7 +1,7 @@
 #ifndef CLOUDEMITTER_H
 #define CLOUDEMITTER_H
 
-#include <elemental/IntParticleEmitter.h>
+#include <elemental/effects/IntParticleEmitter.h>
 
 // Cloud particles grow in place before drifting.
 // Unlike SmokeEmitter, particles don't rise and die/respawn — they spawn once,

@@ -10,33 +10,10 @@ The opening cloud bank is a slowly drifting transparent image in the skybox.
 The later storm cloud is a dense procedural particle volume with a raised,
 irregular center; rain uses a separate particle emitter.
 
-The implementation intentionally uses direct, lab-style OpenGL techniques:
+The implementation uses OpenGL techniques including
 procedural meshes, GLSL shaders, classic Phong lighting, a 2048×2048 shadow
 map, instanced particles and vegetation, alpha-cutout tree billboards, and a
 small Dear ImGui time controller.
-
-## Relation to the graphics labs
-
-- **Lab 3 — textures and blending:** the terrain uses a repeating diffuse map.
-  Lava combines two independently moving samples of `lava_overlay.png`; FBM
-  noise distorts their UVs and the result is blended into the procedural lava
-  pattern. The river combines two moving samples of `water_normal.png` to add
-  small-scale animated normals while keeping its procedural colour, fill mask
-  and electrified-water effect. Alpha blending is used for smoke, clouds and
-  rain.
-- **Lab 5 — lighting:** terrain, water and vegetation use ambient, diffuse and
-  specular terms. Classic Phong uses `reflect(-L, N)` followed by `R · V`.
-- **Lab 6 — shadows:** moonlight is a directional light in both the terrain
-  shader and the orthographic depth pass. The 2048×2048 depth texture is sampled
-  with slope-dependent bias and 3×3 PCF.
-- **Lab 7 — motion:** smoke and rain use velocity, acceleration and frame `dt`
-  with semi-implicit Euler integration (`v += a * dt`, then `p += v * dt`).
-- **Lab 8 — particles:** smoke, ash, clouds and rain use emitter classes,
-  particle life and camera-facing billboards. Per-particle transforms are sent
-  in one interleaved instance buffer and rendered with instanced drawing.
-
-Procedural noise, the cubemap, vegetation instancing and ImGui are retained as
-small extensions of those techniques rather than replacements for them.
 
 ## Simulation sequence
 
@@ -87,9 +64,10 @@ Other controls are available separately with F2. Its visual settings adjust
 lava glow and shore reach, water brightness and reflections, and storm cloud
 and cooling-smoke opacity. `Reset visuals` restores the selected default appearance;
 `Copy visual settings` copies the current values as launch arguments so they
-can be reused or shared. The camera uses
-a fixed view of the volcano and river throughout the sequence, apart from the
-brief scripted shake before the eruption.
+can be reused or shared. The camera keeps its position and viewing direction
+throughout the sequence. The opening shot uses a 47-degree field of view;
+showing the stopwatch smoothly widens it to 50 degrees. A brief scripted shake
+precedes the eruption.
 
 ## Automated visual checks
 
@@ -133,10 +111,11 @@ Both texture strengths and the other visual settings are also available in the
   state.
 - `elemental/elements/Volcano.*`: procedural terrain/volcano mesh and sampled
   ground height.
-- `elemental/IntParticleEmitter.*`: shared instanced particle rendering.
-- `elemental/elements/{Smoke,Cloud,Rain}Emitter.*`: stage-specific particle
+- `elemental/effects/IntParticleEmitter.*`: shared instanced particle rendering.
+- `elemental/effects/{Smoke,Cloud,Rain}Emitter.*`: stage-specific particle
   motion.
-- `elemental/LightningSystem.*`: branching bolt animation and impact events.
+- `elemental/effects/LightningSystem.*`: branching bolt animation and impact events.
+- `elemental/effects/CrackSystem.*`: crack events and terrain shader data.
 - `elemental/GeometryFactory.*`: procedural grass and flower primitives.
 - `elemental/InstancedPropRenderer.*`: two-batch flower rendering.
 - `elemental/shaders/`: terrain, sky, particle, shadow, vegetation, tree and

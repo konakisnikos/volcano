@@ -15,7 +15,7 @@ void Camera::resetToEstablishingShot() {
     const vec3 direction = normalize(target - position);
     horizontalAngle = atan2(direction.x, direction.z);
     verticalAngle = asin(direction.y);
-    FoV = 43.0f;
+    FoV = 47.0f;
 }
 
 void Camera::update() {

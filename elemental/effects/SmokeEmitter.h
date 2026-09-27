@@ -1,7 +1,7 @@
 #ifndef SMOKEEMITTER_H
 #define SMOKEEMITTER_H
 
-#include <elemental/IntParticleEmitter.h>
+#include <elemental/effects/IntParticleEmitter.h>
 
 class SmokeEmitter : public IntParticleEmitter {
     public:

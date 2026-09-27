@@ -45,6 +45,18 @@ cmake --build build -j4
 ./build/elemental
 ```
 
+On Windows, configure and build from a Developer PowerShell with Visual Studio's
+C++ tools installed:
+
+```powershell
+cmake -S . -B build
+cmake --build build --config Release --parallel 4
+.\build\Release\elemental.exe --windowed
+```
+
+For the optional UI-free build, add `-DELEMENTAL_ENABLE_IMGUI=OFF` to the
+configure command.
+
 Without `--windowed`, the program uses the primary monitor in fullscreen mode.
 Fullscreen is recommended for presentation on macOS because its windowed
 OpenGL compositor can pace otherwise fast frames unevenly. Use `--windowed`

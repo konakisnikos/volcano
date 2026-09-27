@@ -86,12 +86,12 @@ set(SRC
   elemental/elements/VolcanoNoise.cpp
   elemental/elements/Skybox.cpp
   elemental/SceneDirector.cpp
-  elemental/CrackSystem.cpp
-  elemental/IntParticleEmitter.cpp
-  elemental/elements/SmokeEmitter.cpp
-  elemental/elements/CloudEmitter.cpp
-  elemental/elements/RainEmitter.cpp
-  elemental/LightningSystem.cpp
+  elemental/effects/CrackSystem.cpp
+  elemental/effects/IntParticleEmitter.cpp
+  elemental/effects/SmokeEmitter.cpp
+  elemental/effects/CloudEmitter.cpp
+  elemental/effects/RainEmitter.cpp
+  elemental/effects/LightningSystem.cpp
   elemental/GeometryFactory.cpp
   elemental/InstancedPropRenderer.cpp
 
@@ -104,16 +104,16 @@ set(HDR
   common/model.h
   common/texture.h
   common/light.h
-  elemental/CrackSystem.h
+  elemental/effects/CrackSystem.h
   elemental/SceneDirector.h
   elemental/elements/Skybox.h
   elemental/elements/Volcano.h
   elemental/elements/VolcanoNoise.h
-  elemental/IntParticleEmitter.h
-  elemental/elements/SmokeEmitter.h
-  elemental/elements/CloudEmitter.h
-  elemental/elements/RainEmitter.h
-  elemental/LightningSystem.h
+  elemental/effects/IntParticleEmitter.h
+  elemental/effects/SmokeEmitter.h
+  elemental/effects/CloudEmitter.h
+  elemental/effects/RainEmitter.h
+  elemental/effects/LightningSystem.h
   elemental/GeometryFactory.h
   elemental/InstancedPropRenderer.h
 )

@@ -26,10 +26,10 @@
 #include <elemental/elements/Skybox.h>
 #include <elemental/SceneDirector.h>
 #include <common/light.h>
-#include <elemental/elements/SmokeEmitter.h>
-#include <elemental/elements/CloudEmitter.h>
-#include <elemental/elements/RainEmitter.h>
-#include <elemental/LightningSystem.h>
+#include <elemental/effects/SmokeEmitter.h>
+#include <elemental/effects/CloudEmitter.h>
+#include <elemental/effects/RainEmitter.h>
+#include <elemental/effects/LightningSystem.h>
 #include <elemental/GeometryFactory.h>
 #include <elemental/InstancedPropRenderer.h>
 
@@ -41,7 +41,7 @@
 #endif
 
 // Crack system (CPU -> shader + optional stone burst)
-#include <elemental/CrackSystem.h>
+#include <elemental/effects/CrackSystem.h>
 
 using namespace std;
 using namespace glm;
@@ -255,7 +255,7 @@ const unsigned int SHADOW_MAP_SIZE = 2048;
 static bool gShowHud = false;
 static float gStopwatchProgress = 0.0f;
 static const float STOPWATCH_TRANSITION_SECONDS = 0.48f;
-static const float STOPWATCH_ZOOM_OUT_DEGREES = 4.0f;
+static const float STOPWATCH_ZOOM_OUT_DEGREES = 3.0f;
 static bool gShowSettings = false;
 static bool gImGuiGlfwInitialized = false;
 static bool gImGuiOpenGLInitialized = false;
@@ -1614,7 +1614,7 @@ void mainLoop()
 {
     double lastTime = glfwGetTime();
 #if defined(ELEMENTAL_ENABLE_IMGUI)
-    const float baseCameraFoV = camera ? camera->FoV : 43.0f;
+    const float baseCameraFoV = camera ? camera->FoV : 47.0f;
 #endif
     const double performanceStartTime = lastTime;
     unsigned long long renderedFrameCount = 0;

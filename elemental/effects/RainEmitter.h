@@ -1,7 +1,7 @@
 #ifndef RAINEMITTER_H
 #define RAINEMITTER_H
 
-#include <elemental/IntParticleEmitter.h>
+#include <elemental/effects/IntParticleEmitter.h>
 
 // Drops recycle at groundY to maintain a continuous shower.
 class RainEmitter : public IntParticleEmitter {
