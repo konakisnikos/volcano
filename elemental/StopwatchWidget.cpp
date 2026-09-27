@@ -120,14 +120,16 @@ void triggerStopwatchFinger(StopwatchAction action)
     if (finger >= 0) fingerPressStart[finger] = ImGui::GetTime();
 }
 
-StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool paused)
+StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool paused,
+                             float reveal, bool interactive)
 {
     const ImGuiIO& io = ImGui::GetIO();
     const float scale = std::max(0.52f, std::min(0.67f, io.DisplaySize.y / 768.0f));
     const ImVec2 size(426.0f * scale, 500.0f * scale);
     const ImVec2 position(std::max(0.0f,
                                    io.DisplaySize.x - size.x + 42.0f * scale),
-                          std::max(0.0f, io.DisplaySize.y - size.y));
+                          std::max(0.0f, io.DisplaySize.y - size.y) +
+                              (1.0f - reveal) * size.y);
     ImGui::SetNextWindowPos(position, ImGuiCond_Always);
     ImGui::SetNextWindowSize(size, ImGuiCond_Always);
     const ImGuiWindowFlags flags = ImGuiWindowFlags_NoTitleBar |
@@ -152,13 +154,13 @@ StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool pause
                         fingerRegions[finger], center, scale);
     }
 
-    const bool slower = buttonHitbox(
+    const bool slower = interactive && buttonHitbox(
         "##slower", ImVec2(center.x - 82.0f * scale, faceOrigin.y + 55.0f * scale),
         scale, "Halve simulation speed ([)");
-    const bool pause = buttonHitbox(
+    const bool pause = interactive && buttonHitbox(
         "##pause", ImVec2(center.x, faceOrigin.y + 31.0f * scale),
         scale, paused ? "Resume simulation (P)" : "Pause simulation (P)");
-    const bool faster = buttonHitbox(
+    const bool faster = interactive && buttonHitbox(
         "##faster", ImVec2(center.x + 75.0f * scale, faceOrigin.y + 55.0f * scale),
         scale, "Double simulation speed (])");
 

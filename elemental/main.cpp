@@ -252,9 +252,18 @@ const unsigned int SHADOW_MAP_SIZE = 2048;
 
 #if defined(ELEMENTAL_ENABLE_IMGUI)
 static bool gShowHud = false;
+static float gStopwatchProgress = 0.0f;
+static const float STOPWATCH_TRANSITION_SECONDS = 0.48f;
+static const float STOPWATCH_ZOOM_OUT_DEGREES = 4.0f;
 static bool gShowSettings = false;
 static bool gImGuiGlfwInitialized = false;
 static bool gImGuiOpenGLInitialized = false;
+
+static float stopwatchReveal()
+{
+    const float t = gStopwatchProgress;
+    return t * t * (3.0f - 2.0f * t);
+}
 #endif
 
 Light* moonlight;
@@ -1185,11 +1194,12 @@ static void renderAtmosphereAndLightning(float lavaTimeForSmoke, float lavaTime,
 static void renderControls(double currentTime, float waterFill)
 {
     #if defined(ELEMENTAL_ENABLE_IMGUI)
-    if (gShowHud) {
+    if (gShowHud || gStopwatchProgress > 0.0f) {
         if (sceneDirector) {
             const StopwatchAction action = drawStopwatch(
                 sceneDirector->getSimSeconds(), sceneDirector->getTimeScale(),
-                sceneDirector->isPaused());
+                sceneDirector->isPaused(), stopwatchReveal(),
+                gShowHud && gStopwatchProgress >= 1.0f);
             if (action == StopwatchAction::Slower) changeSimulationSpeed(false);
             else if (action == StopwatchAction::Faster) changeSimulationSpeed(true);
             else if (action == StopwatchAction::TogglePause) toggleSimulationPause();
@@ -1597,6 +1607,9 @@ static void advanceFinalStages(float simulationTime, const VolcanoStats& stats)
 void mainLoop()
 {
     double lastTime = glfwGetTime();
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+    const float baseCameraFoV = camera ? camera->FoV : 43.0f;
+#endif
     const double performanceStartTime = lastTime;
     unsigned long long renderedFrameCount = 0;
     std::vector<float> frameTimesMs;
@@ -1622,6 +1635,16 @@ void mainLoop()
 #endif
 
         handleKeyboardInput(currentTime);
+
+#if defined(ELEMENTAL_ENABLE_IMGUI)
+        const float revealStep = std::max(0.0f, deltaTime) /
+                                 STOPWATCH_TRANSITION_SECONDS;
+        gStopwatchProgress = gShowHud
+            ? std::min(1.0f, gStopwatchProgress + revealStep)
+            : std::max(0.0f, gStopwatchProgress - revealStep);
+        if (camera) camera->FoV = baseCameraFoV +
+                                  STOPWATCH_ZOOM_OUT_DEGREES * stopwatchReveal();
+#endif
 
         if (sceneDirector) {
             sceneDirector->update(currentTime, deltaTime);

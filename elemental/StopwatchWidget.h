@@ -12,7 +12,8 @@ void initializeStopwatchWidget();
 void shutdownStopwatchWidget();
 void triggerStopwatchFinger(StopwatchAction action);
 
-// Draws the simulation stopwatch and returns the button pressed this frame.
-StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool paused);
+// Reveal ranges from 0 (off screen) to 1 (resting position).
+StopwatchAction drawStopwatch(double elapsedSeconds, float timeScale, bool paused,
+                             float reveal, bool interactive);
 
 #endif
