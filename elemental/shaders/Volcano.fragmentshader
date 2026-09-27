@@ -535,7 +535,8 @@ void main() {
 
    // Ambient and lava glow are unaffected by shadow (ambient models bounce
    // light; lava self-illuminates), only direct light contributions are.
-   float shadow = shadowFactor(vWorldPos, bumpNormal, L);
+   // Shadow bias follows the mesh surface, not the texture-perturbed normal.
+   float shadow = shadowFactor(vWorldPos, baseNormal, L);
    vec3 lightning = vec3(0.16, 0.22, 0.36) * u_LightningFlash;
    fragment_color = Ia + (1.0 - shadow) * (Id + Is + rimColor + waterHighlight)
                     + vec4(emission + lavaBankLight + waterReflection + electricEmission + channelBounce

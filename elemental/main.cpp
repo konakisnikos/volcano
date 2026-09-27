@@ -925,7 +925,12 @@ static void renderShadowMap(float lavaTime, int framebufferWidth, int framebuffe
         glUniform1f(depthLavaFlowSpeedLocation, LAVA_FLOW_SPEED);
         glUniform1f(depthCraterRadiusLocation, stats.craterRadius);
 
+        // Push caster depth slightly away from the receiver to prevent terrain
+        // self-shadowing bands without changing the terrain texture or lighting.
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(1.0f, 1.0f);
         volcano->Draw();
+        glDisable(GL_POLYGON_OFFSET_FILL);
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         // GLFW window units and framebuffer pixels differ on Retina/HiDPI
